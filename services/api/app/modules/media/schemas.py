@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class UploadedImageItem(BaseModel):
@@ -9,3 +9,17 @@ class UploadedImageItem(BaseModel):
     content_type: str | None
     is_primary: bool
     sort_order: int
+
+
+class UpdateCaseImageRequest(BaseModel):
+    is_primary: bool | None = None
+    sort_order: int | None = None
+
+
+class ReorderCaseImageItem(BaseModel):
+    image_id: str
+    sort_order: int
+
+
+class ReorderCaseImagesRequest(BaseModel):
+    items: list[ReorderCaseImageItem] = Field(default_factory=list, min_length=1)

@@ -9,7 +9,7 @@ ECG Pro 是一个面向心电图学习场景的多端平台，一期包含：
 - MinIO / 本地文件存储
 - Docker Compose 开发与演示环境
 
-当前仓库已完成第一阶段基础骨架，详细文档见：
+当前仓库已完成一期前两阶段的基础能力建设，详细文档见：
 
 - [需求文档](D:/projects/ecg_pro/docs/requirements.md)
 - [系统架构](D:/projects/ecg_pro/docs/architecture.md)
@@ -43,14 +43,16 @@ docs/
 - Flutter 用户端与管理端脚手架
 - 共享 package 骨架
 - FastAPI 服务入口与模块划分
+- 后端认证、案例管理、分类标签、测验、学习记录与图片管理接口
+- 案例筛选分页、答题历史查询与演示种子数据脚本
 - Docker Compose 基础配置
 
 下一步将按计划进入：
 
-1. 后端数据模型与认证骨架
-2. 共享 UI 组件库增强
-3. 管理端案例管理闭环
-4. 用户端学习与测验闭环
+1. 管理端案例管理页面接入真实接口
+2. 用户端学习页、详情页与测验页闭环
+3. 共享 UI 组件库增强
+4. Docker 联调与部署体验完善
 
 ## 本地启动建议
 
@@ -60,6 +62,13 @@ docs/
 
 ```powershell
 docker compose -f infra/docker/docker-compose.yml up --build
+```
+
+如需快速生成演示数据，可使用：
+
+```powershell
+cd services/api
+python scripts/seed_demo_data.py
 ```
 
 ### Flutter 用户端
@@ -87,5 +96,4 @@ flutter run -d chrome
 
 - Docker 统一维护后端、数据库、对象存储和 Web 托管。
 - Android 客户端通过 Flutter 构建 `APK/AAB`，不作为容器运行。
-- 当前代码仍处于项目初始化阶段，业务模块会在后续迭代中逐步补齐。
-
+- 当前仓库已具备一期后端基础业务能力，前端页面与接口联调将在后续迭代中逐步补齐。

@@ -93,7 +93,7 @@ def _serialize_case_detail(item: ECGCase) -> CaseDetailItem:
                 is_primary=image.is_primary,
                 sort_order=image.sort_order,
             )
-            for image in item.images
+            for image in sorted(item.images, key=lambda image: (image.sort_order, image.created_at))
         ],
         created_by=item.created_by,
         created_at=item.created_at,

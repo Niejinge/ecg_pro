@@ -48,44 +48,85 @@ def _create_published_case(
     return case_id
 
 
-def test_admin_can_upload_case_image_and_public_can_fetch_it(
+def test_admin_can_manage_case_images_and_public_can_fetch_them(
     client: TestClient,
     admin_headers: dict[str, str],
 ) -> None:
     case_id = _create_published_case(client, admin_headers)
 
-    upload_response = client.post(
+    first_upload_response = client.post(
         f"/api/v1/admin/cases/{case_id}/images",
         headers=admin_headers,
         files={
-            "file": ("ecg.png", b"fake-image-content", "image/png"),
+            "file": ("ecg-primary.png", b"fake-primary-image", "image/png"),
         },
         data={
             "is_primary": "true",
             "sort_order": "1",
         },
     )
+    assert first_upload_response.status_code == 201
+    first_image = first_upload_response.json()
 
-    assert upload_response.status_code == 201
-    payload = upload_response.json()
-    assert payload["case_id"] == case_id
-    assert payload["is_primary"] is True
+    second_upload_response = client.post(
+        f"/api/v1/admin/cases/{case_id}/images",
+        headers=admin_headers,
+        files={
+            "file": ("ecg-secondary.png", b"fake-secondary-image", "image/png"),
+        },
+        data={
+            "is_primary": "false",
+            "sort_order": "2",
+        },
+    )
+    assert second_upload_response.status_code == 201
+    second_image = second_upload_response.json()
+
+    update_primary_response = client.patch(
+        f"/api/v1/admin/case-images/{second_image['id']}",
+        headers=admin_headers,
+        json={"is_primary": True},
+    )
+    assert update_primary_response.status_code == 200
+    assert update_primary_response.json()["is_primary"] is True
+
+    reorder_response = client.put(
+        f"/api/v1/admin/cases/{case_id}/images/order",
+        headers=admin_headers,
+        json={
+            "items": [
+                {"image_id": second_image["id"], "sort_order": 1},
+                {"image_id": first_image["id"], "sort_order": 2},
+            ]
+        },
+    )
+    assert reorder_response.status_code == 200
+    assert reorder_response.json()[0]["id"] == second_image["id"]
 
     detail_response = client.get(f"/api/v1/public/cases/{case_id}")
     assert detail_response.status_code == 200
-    assert len(detail_response.json()["images"]) == 1
+    assert len(detail_response.json()["images"]) == 2
+    assert detail_response.json()["images"][0]["id"] == second_image["id"]
+    assert detail_response.json()["images"][0]["is_primary"] is True
+    assert detail_response.json()["images"][1]["id"] == first_image["id"]
 
     image_file_response = client.get(
-        f"/api/v1/public/images/{payload['id']}/file",
+        f"/api/v1/public/images/{second_image['id']}/file",
     )
     assert image_file_response.status_code == 200
-    assert image_file_response.content == b"fake-image-content"
+    assert image_file_response.content == b"fake-secondary-image"
 
     delete_response = client.delete(
-        f"/api/v1/admin/case-images/{payload['id']}",
+        f"/api/v1/admin/case-images/{second_image['id']}",
         headers=admin_headers,
     )
     assert delete_response.status_code == 204
+
+    detail_after_delete = client.get(f"/api/v1/public/cases/{case_id}")
+    assert detail_after_delete.status_code == 200
+    assert len(detail_after_delete.json()["images"]) == 1
+    assert detail_after_delete.json()["images"][0]["id"] == first_image["id"]
+    assert detail_after_delete.json()["images"][0]["is_primary"] is True
 
 
 def test_learning_progress_favorites_and_wrong_questions_are_recorded(
