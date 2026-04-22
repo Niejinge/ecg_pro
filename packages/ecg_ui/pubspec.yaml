@@ -1,0 +1,17 @@
+name: ecg_ui
+description: Shared Flutter UI kit and theme tokens for ECG Pro.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+

@@ -1,0 +1,36 @@
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Dart / Flutter
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+**/android/local.properties
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local runtime data
+services/api/storage/
+infra/docker/postgres_data/
+infra/docker/minio_data/
+

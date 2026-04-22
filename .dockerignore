@@ -1,0 +1,13 @@
+.git
+.idea
+.vscode
+**/.dart_tool
+**/build
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+infra/docker/postgres_data
+infra/docker/minio_data
+
