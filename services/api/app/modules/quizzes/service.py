@@ -15,6 +15,9 @@ from app.modules.quizzes.schemas import (
     AdminQuizQuestionUpsertRequest,
     PublicQuizOptionItem,
     PublicQuizQuestionItem,
+    QuizAttemptDetailItem,
+    QuizAttemptListItem,
+    QuizAttemptListResponse,
     QuizSubmissionRequest,
     QuizSubmissionResponse,
     QuizSubmissionResultItem,
@@ -328,4 +331,93 @@ def submit_quiz(
         total_questions=len(questions),
         correct_count=correct_count,
         items=results,
+    )
+
+
+def _serialize_attempt_list_item(
+    session: Session,
+    attempt: QuizAttempt,
+) -> QuizAttemptListItem:
+    ecg_case = get_case(session, attempt.case_id) if attempt.case_id else None
+    return QuizAttemptListItem(
+        attempt_id=attempt.id,
+        case_id=attempt.case_id,
+        case_code=ecg_case.case_code if ecg_case else None,
+        case_title=ecg_case.title if ecg_case else None,
+        score=attempt.score,
+        total_questions=attempt.total_questions,
+        correct_count=attempt.correct_count,
+        submitted_at=attempt.submitted_at,
+    )
+
+
+def list_user_attempts(
+    session: Session,
+    current_user: User,
+    *,
+    case_id: str | None,
+    page: int,
+    page_size: int,
+) -> QuizAttemptListResponse:
+    attempts, total = repository.list_attempts_by_user(
+        session,
+        user_id=current_user.id,
+        case_id=case_id,
+        page=page,
+        page_size=page_size,
+    )
+    return QuizAttemptListResponse(
+        items=[_serialize_attempt_list_item(session, item) for item in attempts],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=page * page_size < total,
+    )
+
+
+def get_user_attempt_detail(
+    session: Session,
+    current_user: User,
+    *,
+    attempt_id: str,
+) -> QuizAttemptDetailItem:
+    attempt = repository.get_attempt_by_id(
+        session,
+        user_id=current_user.id,
+        attempt_id=attempt_id,
+    )
+    if attempt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quiz attempt not found.",
+        )
+
+    ecg_case = get_case(session, attempt.case_id) if attempt.case_id else None
+    items = []
+    for attempt_item in attempt.items:
+        question = attempt_item.question
+        correct_option_ids = sorted(
+            option.id for option in question.options if option.is_correct
+        )
+        items.append(
+            QuizSubmissionResultItem(
+                question_id=question.id,
+                selected_option_ids=attempt_item.selected_option_ids,
+                correct_option_ids=correct_option_ids,
+                is_correct=attempt_item.is_correct,
+                explanation=question.explanation,
+            )
+        )
+
+    return QuizAttemptDetailItem(
+        attempt_id=attempt.id,
+        case_id=attempt.case_id,
+        case_code=ecg_case.case_code if ecg_case else None,
+        case_title=ecg_case.title if ecg_case else None,
+        mode=attempt.mode,
+        score=attempt.score,
+        total_questions=attempt.total_questions,
+        correct_count=attempt.correct_count,
+        submitted_at=attempt.submitted_at,
+        items=items,
     )

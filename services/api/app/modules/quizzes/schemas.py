@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.domain.enums import AttemptMode, DifficultyLevel, QuestionType
@@ -81,4 +83,36 @@ class QuizSubmissionResponse(BaseModel):
     score: int
     total_questions: int
     correct_count: int
+    items: list[QuizSubmissionResultItem]
+
+
+class QuizAttemptListItem(BaseModel):
+    attempt_id: str
+    case_id: str | None
+    case_code: str | None
+    case_title: str | None
+    score: int
+    total_questions: int
+    correct_count: int
+    submitted_at: datetime | None
+
+
+class QuizAttemptListResponse(BaseModel):
+    items: list[QuizAttemptListItem]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class QuizAttemptDetailItem(BaseModel):
+    attempt_id: str
+    case_id: str | None
+    case_code: str | None
+    case_title: str | None
+    mode: AttemptMode
+    score: int
+    total_questions: int
+    correct_count: int
+    submitted_at: datetime | None
     items: list[QuizSubmissionResultItem]

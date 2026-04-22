@@ -77,7 +77,8 @@ def test_admin_can_manage_taxonomy_and_cases(
         headers=admin_headers,
     )
     assert list_admin_cases_response.status_code == 200
-    assert len(list_admin_cases_response.json()) == 1
+    assert list_admin_cases_response.json()["total"] == 1
+    assert len(list_admin_cases_response.json()["items"]) == 1
 
     public_detail_before_publish = client.get(f"/api/v1/public/cases/{case_id}")
     assert public_detail_before_publish.status_code == 404
@@ -91,8 +92,9 @@ def test_admin_can_manage_taxonomy_and_cases(
 
     public_cases_response = client.get("/api/v1/public/cases")
     assert public_cases_response.status_code == 200
-    assert len(public_cases_response.json()) == 1
-    assert public_cases_response.json()[0]["case_code"] == "ECG-001"
+    assert public_cases_response.json()["total"] == 1
+    assert len(public_cases_response.json()["items"]) == 1
+    assert public_cases_response.json()["items"][0]["case_code"] == "ECG-001"
 
     public_detail_after_publish = client.get(f"/api/v1/public/cases/{case_id}")
     assert public_detail_after_publish.status_code == 200
@@ -117,7 +119,8 @@ def test_admin_can_manage_taxonomy_and_cases(
 
     public_cases_after_offline = client.get("/api/v1/public/cases")
     assert public_cases_after_offline.status_code == 200
-    assert public_cases_after_offline.json() == []
+    assert public_cases_after_offline.json()["items"] == []
+    assert public_cases_after_offline.json()["total"] == 0
 
 
 def test_category_slug_must_be_unique(
@@ -138,3 +141,139 @@ def test_category_slug_must_be_unique(
 
     assert first.status_code == 201
     assert second.status_code == 409
+
+
+def test_case_list_supports_filters_search_and_pagination(
+    client: TestClient,
+    admin_headers: dict[str, str],
+) -> None:
+    fast_category = client.post(
+        "/api/v1/admin/categories",
+        headers=admin_headers,
+        json={
+            "name": "快速性心律失常",
+            "slug": "tachy",
+            "description": None,
+            "sort_order": 0,
+            "is_visible": True,
+            "parent_id": None,
+        },
+    ).json()
+    block_category = client.post(
+        "/api/v1/admin/categories",
+        headers=admin_headers,
+        json={
+            "name": "传导阻滞",
+            "slug": "block",
+            "description": None,
+            "sort_order": 1,
+            "is_visible": True,
+            "parent_id": None,
+        },
+    ).json()
+    high_tag = client.post(
+        "/api/v1/admin/tags",
+        headers=admin_headers,
+        json={"name": "高危", "slug": "high-risk", "description": None},
+    ).json()
+    beginner_tag = client.post(
+        "/api/v1/admin/tags",
+        headers=admin_headers,
+        json={"name": "基础", "slug": "basic", "description": None},
+    ).json()
+
+    case_payloads = [
+        {
+            "case_code": "ECG-FILTER-001",
+            "title": "室速识别",
+            "diagnosis": "室性心动过速",
+            "category_id": fast_category["id"],
+            "tag_ids": [high_tag["id"]],
+            "difficulty": "advanced",
+            "risk_level": "critical",
+            "is_featured": True,
+        },
+        {
+            "case_code": "ECG-FILTER-002",
+            "title": "房颤识别",
+            "diagnosis": "心房颤动",
+            "category_id": fast_category["id"],
+            "tag_ids": [beginner_tag["id"]],
+            "difficulty": "intermediate",
+            "risk_level": "high",
+            "is_featured": False,
+        },
+        {
+            "case_code": "ECG-FILTER-003",
+            "title": "一度房室传导阻滞",
+            "diagnosis": "一度房室传导阻滞",
+            "category_id": block_category["id"],
+            "tag_ids": [beginner_tag["id"]],
+            "difficulty": "beginner",
+            "risk_level": "low",
+            "is_featured": False,
+        },
+    ]
+
+    for index, payload in enumerate(case_payloads, start=1):
+        response = client.post(
+            "/api/v1/admin/cases",
+            headers=admin_headers,
+            json={
+                **payload,
+                "summary": None,
+                "key_leads": [],
+                "interpretation_steps": [],
+                "learning_points": [],
+                "common_mistakes": [],
+                "memory_tips": [],
+            },
+        )
+        assert response.status_code == 201
+        if index < 3:
+            publish = client.post(
+                f"/api/v1/admin/cases/{response.json()['id']}/publish",
+                headers=admin_headers,
+            )
+            assert publish.status_code == 200
+
+    public_filtered = client.get(
+        "/api/v1/public/cases",
+        params={
+            "keyword": "识别",
+            "category_id": fast_category["id"],
+            "tag_id": high_tag["id"],
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert public_filtered.status_code == 200
+    assert public_filtered.json()["total"] == 1
+    assert public_filtered.json()["items"][0]["case_code"] == "ECG-FILTER-001"
+
+    public_paged = client.get(
+        "/api/v1/public/cases",
+        params={"page": 1, "page_size": 1},
+    )
+    assert public_paged.status_code == 200
+    assert public_paged.json()["total"] == 2
+    assert len(public_paged.json()["items"]) == 1
+    assert public_paged.json()["has_next"] is True
+
+    admin_filtered = client.get(
+        "/api/v1/admin/cases",
+        headers=admin_headers,
+        params={"status": "draft", "difficulty": "beginner"},
+    )
+    assert admin_filtered.status_code == 200
+    assert admin_filtered.json()["total"] == 1
+    assert admin_filtered.json()["items"][0]["case_code"] == "ECG-FILTER-003"
+
+    admin_keyword = client.get(
+        "/api/v1/admin/cases",
+        headers=admin_headers,
+        params={"keyword": "室速"},
+    )
+    assert admin_keyword.status_code == 200
+    assert admin_keyword.json()["total"] == 1
+    assert admin_keyword.json()["items"][0]["case_code"] == "ECG-FILTER-001"

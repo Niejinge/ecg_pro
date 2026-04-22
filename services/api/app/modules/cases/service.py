@@ -4,12 +4,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domain.enums import CaseStatus
+from app.domain.enums import CaseStatus, DifficultyLevel, RiskLevel
 from app.modules.cases import repository
 from app.modules.cases.models import ECGCase
 from app.modules.cases.schemas import (
     AdminCaseListItem,
+    AdminCaseListResponse,
     AdminCaseUpsertRequest,
+    CaseListResponse,
     CaseCategorySummary,
     CaseDetailItem,
     CaseImageItem,
@@ -122,12 +124,78 @@ def _resolve_tags(session: Session, tag_ids: list[str]) -> list[Tag]:
     return [tag for tag in tags if tag is not None]
 
 
-def list_public_cases(session: Session) -> list[CaseListItem]:
-    return [_serialize_case_summary(item) for item in repository.list_published_cases(session)]
+def list_public_cases(
+    session: Session,
+    *,
+    keyword: str | None,
+    category_id: str | None,
+    tag_id: str | None,
+    difficulty: DifficultyLevel | None,
+    risk_level: RiskLevel | None,
+    is_featured: bool | None,
+    page: int,
+    page_size: int,
+) -> CaseListResponse:
+    items, total = repository.list_cases(
+        session,
+        repository.CaseQueryFilters(
+            keyword=keyword,
+            category_id=category_id,
+            tag_id=tag_id,
+            difficulty=difficulty.value if difficulty else None,
+            risk_level=risk_level.value if risk_level else None,
+            is_featured=is_featured,
+            page=page,
+            page_size=page_size,
+        ),
+        public_only=True,
+    )
+    serialized_items = [_serialize_case_summary(item) for item in items]
+    return CaseListResponse(
+        items=serialized_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=page * page_size < total,
+    )
 
 
-def list_admin_cases(session: Session) -> list[AdminCaseListItem]:
-    return [_serialize_admin_case_summary(item) for item in repository.list_all_cases(session)]
+def list_admin_cases(
+    session: Session,
+    *,
+    keyword: str | None,
+    category_id: str | None,
+    tag_id: str | None,
+    difficulty: DifficultyLevel | None,
+    risk_level: RiskLevel | None,
+    status: CaseStatus | None,
+    is_featured: bool | None,
+    page: int,
+    page_size: int,
+) -> AdminCaseListResponse:
+    items, total = repository.list_cases(
+        session,
+        repository.CaseQueryFilters(
+            keyword=keyword,
+            category_id=category_id,
+            tag_id=tag_id,
+            difficulty=difficulty.value if difficulty else None,
+            risk_level=risk_level.value if risk_level else None,
+            status=status.value if status else None,
+            is_featured=is_featured,
+            page=page,
+            page_size=page_size,
+        ),
+        public_only=False,
+    )
+    serialized_items = [_serialize_admin_case_summary(item) for item in items]
+    return AdminCaseListResponse(
+        items=serialized_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=page * page_size < total,
+    )
 
 
 def get_public_case_detail(session: Session, case_id: str) -> CaseDetailItem:

@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db_session, require_admin
+from app.domain.enums import CaseStatus, DifficultyLevel, RiskLevel
 from app.modules.cases.schemas import (
-    AdminCaseListItem,
+    AdminCaseListResponse,
     AdminCaseUpsertRequest,
+    CaseListResponse,
     CaseDetailItem,
-    CaseListItem,
 )
 from app.modules.cases.service import (
     create_case,
@@ -25,9 +26,29 @@ public_router = APIRouter(tags=["cases"])
 admin_router = APIRouter(tags=["admin-cases"])
 
 
-@public_router.get("/cases", response_model=list[CaseListItem])
-def list_cases(db: Session = Depends(get_db_session)) -> list[CaseListItem]:
-    return list_public_cases(db)
+@public_router.get("/cases", response_model=CaseListResponse)
+def list_cases(
+    keyword: str | None = Query(default=None),
+    category_id: str | None = Query(default=None),
+    tag_id: str | None = Query(default=None),
+    difficulty: DifficultyLevel | None = Query(default=None),
+    risk_level: RiskLevel | None = Query(default=None),
+    is_featured: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db_session),
+) -> CaseListResponse:
+    return list_public_cases(
+        db,
+        keyword=keyword,
+        category_id=category_id,
+        tag_id=tag_id,
+        difficulty=difficulty,
+        risk_level=risk_level,
+        is_featured=is_featured,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @public_router.get("/cases/{case_id}", response_model=CaseDetailItem)
@@ -40,13 +61,33 @@ def get_case_detail(
 
 @admin_router.get(
     "/cases",
-    response_model=list[AdminCaseListItem],
+    response_model=AdminCaseListResponse,
     dependencies=[Depends(require_admin)],
 )
 def list_cases_admin(
+    keyword: str | None = Query(default=None),
+    category_id: str | None = Query(default=None),
+    tag_id: str | None = Query(default=None),
+    difficulty: DifficultyLevel | None = Query(default=None),
+    risk_level: RiskLevel | None = Query(default=None),
+    status_filter: CaseStatus | None = Query(default=None, alias="status"),
+    is_featured: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db_session),
-) -> list[AdminCaseListItem]:
-    return list_admin_cases(db)
+) -> AdminCaseListResponse:
+    return list_admin_cases(
+        db,
+        keyword=keyword,
+        category_id=category_id,
+        tag_id=tag_id,
+        difficulty=difficulty,
+        risk_level=risk_level,
+        status=status_filter,
+        is_featured=is_featured,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @admin_router.post(

@@ -157,6 +157,7 @@ def test_learning_progress_favorites_and_wrong_questions_are_recorded(
     assert wrong_submit_response.status_code == 200
     assert wrong_submit_response.json()["score"] == 0
     assert wrong_submit_response.json()["correct_count"] == 0
+    first_attempt_id = wrong_submit_response.json()["attempt_id"]
 
     wrong_questions_response = client.get(
         "/api/v1/user/wrong-questions",
@@ -182,6 +183,26 @@ def test_learning_progress_favorites_and_wrong_questions_are_recorded(
     )
     assert correct_submit_response.status_code == 200
     assert correct_submit_response.json()["score"] == 100
+    second_attempt_id = correct_submit_response.json()["attempt_id"]
+
+    attempts_response = client.get(
+        "/api/v1/user/quiz/attempts",
+        headers=student_headers,
+        params={"case_id": case_id, "page": 1, "page_size": 10},
+    )
+    assert attempts_response.status_code == 200
+    assert attempts_response.json()["total"] == 2
+    assert len(attempts_response.json()["items"]) == 2
+    assert attempts_response.json()["items"][0]["attempt_id"] == second_attempt_id
+
+    attempt_detail_response = client.get(
+        f"/api/v1/user/quiz/attempts/{first_attempt_id}",
+        headers=student_headers,
+    )
+    assert attempt_detail_response.status_code == 200
+    assert attempt_detail_response.json()["attempt_id"] == first_attempt_id
+    assert attempt_detail_response.json()["items"][0]["is_correct"] is False
+    assert attempt_detail_response.json()["items"][0]["question_id"] == question["id"]
 
     progress_response = client.get(
         "/api/v1/user/learning/progress",

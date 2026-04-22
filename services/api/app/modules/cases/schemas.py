@@ -42,6 +42,22 @@ class AdminCaseListItem(CaseListItem):
     updated_at: datetime
 
 
+class CaseListResponse(BaseModel):
+    items: list[CaseListItem]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class AdminCaseListResponse(BaseModel):
+    items: list[AdminCaseListItem]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
 class CaseDetailItem(BaseModel):
     id: str
     case_code: str

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db_session, require_admin
@@ -6,14 +6,18 @@ from app.modules.quizzes.schemas import (
     AdminQuizQuestionItem,
     AdminQuizQuestionUpsertRequest,
     PublicQuizQuestionItem,
+    QuizAttemptDetailItem,
+    QuizAttemptListResponse,
     QuizSubmissionRequest,
     QuizSubmissionResponse,
 )
 from app.modules.quizzes.service import (
     create_question,
     delete_question,
+    get_user_attempt_detail,
     list_admin_case_questions,
     list_public_case_questions,
+    list_user_attempts,
     submit_quiz,
     update_question,
 )
@@ -78,3 +82,33 @@ def submit_quiz_endpoint(
     current_user: User = Depends(get_current_user),
 ) -> QuizSubmissionResponse:
     return submit_quiz(db, current_user, payload)
+
+
+@user_router.get("/quiz/attempts", response_model=QuizAttemptListResponse)
+def get_quiz_attempts(
+    case_id: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> QuizAttemptListResponse:
+    return list_user_attempts(
+        db,
+        current_user,
+        case_id=case_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@user_router.get("/quiz/attempts/{attempt_id}", response_model=QuizAttemptDetailItem)
+def get_quiz_attempt_detail(
+    attempt_id: str,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> QuizAttemptDetailItem:
+    return get_user_attempt_detail(
+        db,
+        current_user,
+        attempt_id=attempt_id,
+    )
