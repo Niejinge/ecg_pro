@@ -1,0 +1,206 @@
+from fastapi.testclient import TestClient
+
+
+def _create_published_case(
+    client: TestClient,
+    admin_headers: dict[str, str],
+) -> str:
+    category = client.post(
+        "/api/v1/admin/categories",
+        headers=admin_headers,
+        json={
+            "name": "影像案例",
+            "slug": "image-cases",
+            "description": None,
+            "sort_order": 0,
+            "is_visible": True,
+            "parent_id": None,
+        },
+    )
+    category_id = category.json()["id"]
+
+    created_case = client.post(
+        "/api/v1/admin/cases",
+        headers=admin_headers,
+        json={
+            "case_code": "ECG-MEDIA-001",
+            "title": "房扑案例学习",
+            "summary": "用于图片和学习记录测试",
+            "diagnosis": "心房扑动",
+            "difficulty": "intermediate",
+            "risk_level": "medium",
+            "category_id": category_id,
+            "tag_ids": [],
+            "is_featured": False,
+            "key_leads": ["II"],
+            "interpretation_steps": ["看 F 波"],
+            "learning_points": ["识别锯齿样波形"],
+            "common_mistakes": ["误判为窦性心动过速"],
+            "memory_tips": ["优先观察下壁导联"],
+        },
+    )
+    case_id = created_case.json()["id"]
+    publish_response = client.post(
+        f"/api/v1/admin/cases/{case_id}/publish",
+        headers=admin_headers,
+    )
+    assert publish_response.status_code == 200
+    return case_id
+
+
+def test_admin_can_upload_case_image_and_public_can_fetch_it(
+    client: TestClient,
+    admin_headers: dict[str, str],
+) -> None:
+    case_id = _create_published_case(client, admin_headers)
+
+    upload_response = client.post(
+        f"/api/v1/admin/cases/{case_id}/images",
+        headers=admin_headers,
+        files={
+            "file": ("ecg.png", b"fake-image-content", "image/png"),
+        },
+        data={
+            "is_primary": "true",
+            "sort_order": "1",
+        },
+    )
+
+    assert upload_response.status_code == 201
+    payload = upload_response.json()
+    assert payload["case_id"] == case_id
+    assert payload["is_primary"] is True
+
+    detail_response = client.get(f"/api/v1/public/cases/{case_id}")
+    assert detail_response.status_code == 200
+    assert len(detail_response.json()["images"]) == 1
+
+    image_file_response = client.get(
+        f"/api/v1/public/images/{payload['id']}/file",
+    )
+    assert image_file_response.status_code == 200
+    assert image_file_response.content == b"fake-image-content"
+
+    delete_response = client.delete(
+        f"/api/v1/admin/case-images/{payload['id']}",
+        headers=admin_headers,
+    )
+    assert delete_response.status_code == 204
+
+
+def test_learning_progress_favorites_and_wrong_questions_are_recorded(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    student_headers: dict[str, str],
+) -> None:
+    case_id = _create_published_case(client, admin_headers)
+
+    create_question_response = client.post(
+        f"/api/v1/admin/cases/{case_id}/questions",
+        headers=admin_headers,
+        json={
+            "stem": "房扑最常见的心电图特征是？",
+            "explanation": "需要识别规则 F 波。",
+            "question_type": "single_choice",
+            "difficulty": "intermediate",
+            "sort_order": 1,
+            "is_active": True,
+            "options": [
+                {"label": "A", "content": "锯齿样 F 波", "is_correct": True, "sort_order": 1},
+                {"label": "B", "content": "完全不规则 RR", "is_correct": False, "sort_order": 2},
+            ],
+        },
+    )
+    question = create_question_response.json()
+    correct_option_id = next(
+        option["id"] for option in question["options"] if option["is_correct"]
+    )
+    wrong_option_id = next(
+        option["id"] for option in question["options"] if not option["is_correct"]
+    )
+
+    view_response = client.post(
+        f"/api/v1/user/learning/cases/{case_id}/view",
+        headers=student_headers,
+    )
+    assert view_response.status_code == 200
+    assert view_response.json()["status"] == "in_progress"
+    assert view_response.json()["completion_rate"] == 10
+
+    favorite_response = client.post(
+        f"/api/v1/user/favorites/{case_id}",
+        headers=student_headers,
+    )
+    assert favorite_response.status_code == 201
+
+    list_favorites_response = client.get(
+        "/api/v1/user/favorites",
+        headers=student_headers,
+    )
+    assert list_favorites_response.status_code == 200
+    assert len(list_favorites_response.json()) == 1
+
+    wrong_submit_response = client.post(
+        "/api/v1/user/quiz/submit",
+        headers=student_headers,
+        json={
+            "case_id": case_id,
+            "mode": "case_quiz",
+            "answers": [
+                {
+                    "question_id": question["id"],
+                    "selected_option_ids": [wrong_option_id],
+                }
+            ],
+        },
+    )
+    assert wrong_submit_response.status_code == 200
+    assert wrong_submit_response.json()["score"] == 0
+    assert wrong_submit_response.json()["correct_count"] == 0
+
+    wrong_questions_response = client.get(
+        "/api/v1/user/wrong-questions",
+        headers=student_headers,
+    )
+    assert wrong_questions_response.status_code == 200
+    assert len(wrong_questions_response.json()) == 1
+    assert wrong_questions_response.json()[0]["question_id"] == question["id"]
+
+    correct_submit_response = client.post(
+        "/api/v1/user/quiz/submit",
+        headers=student_headers,
+        json={
+            "case_id": case_id,
+            "mode": "case_quiz",
+            "answers": [
+                {
+                    "question_id": question["id"],
+                    "selected_option_ids": [correct_option_id],
+                }
+            ],
+        },
+    )
+    assert correct_submit_response.status_code == 200
+    assert correct_submit_response.json()["score"] == 100
+
+    progress_response = client.get(
+        "/api/v1/user/learning/progress",
+        headers=student_headers,
+    )
+    assert progress_response.status_code == 200
+    assert len(progress_response.json()) == 1
+    assert progress_response.json()[0]["status"] == "completed"
+    assert progress_response.json()[0]["best_score"] == 100
+
+    remove_favorite_response = client.delete(
+        f"/api/v1/user/favorites/{case_id}",
+        headers=student_headers,
+    )
+    assert remove_favorite_response.status_code == 204
+
+    list_favorites_after_remove = client.get(
+        "/api/v1/user/favorites",
+        headers=student_headers,
+    )
+    assert list_favorites_after_remove.status_code == 200
+    assert list_favorites_after_remove.json() == []

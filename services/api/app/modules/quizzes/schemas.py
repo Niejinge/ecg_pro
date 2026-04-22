@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from app.domain.enums import DifficultyLevel, QuestionType
+from app.domain.enums import AttemptMode, DifficultyLevel, QuestionType
 
 
 class QuizOptionUpsertRequest(BaseModel):
@@ -54,3 +54,31 @@ class PublicQuizQuestionItem(BaseModel):
     difficulty: DifficultyLevel
     sort_order: int
     options: list[PublicQuizOptionItem]
+
+
+class QuizAnswerSubmission(BaseModel):
+    question_id: str
+    selected_option_ids: list[str] = Field(default_factory=list)
+
+
+class QuizSubmissionRequest(BaseModel):
+    case_id: str
+    mode: AttemptMode = AttemptMode.case_quiz
+    answers: list[QuizAnswerSubmission] = Field(default_factory=list)
+
+
+class QuizSubmissionResultItem(BaseModel):
+    question_id: str
+    selected_option_ids: list[str]
+    correct_option_ids: list[str]
+    is_correct: bool
+    explanation: str | None
+
+
+class QuizSubmissionResponse(BaseModel):
+    attempt_id: str
+    case_id: str
+    score: int
+    total_questions: int
+    correct_count: int
+    items: list[QuizSubmissionResultItem]

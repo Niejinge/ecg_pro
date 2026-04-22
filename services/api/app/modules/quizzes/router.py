@@ -1,22 +1,27 @@
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db_session, require_admin
+from app.core.deps import get_current_user, get_db_session, require_admin
 from app.modules.quizzes.schemas import (
     AdminQuizQuestionItem,
     AdminQuizQuestionUpsertRequest,
     PublicQuizQuestionItem,
+    QuizSubmissionRequest,
+    QuizSubmissionResponse,
 )
 from app.modules.quizzes.service import (
     create_question,
     delete_question,
     list_admin_case_questions,
     list_public_case_questions,
+    submit_quiz,
     update_question,
 )
+from app.modules.users.models import User
 
 public_router = APIRouter(tags=["quizzes"])
 admin_router = APIRouter(tags=["admin-quizzes"], dependencies=[Depends(require_admin)])
+user_router = APIRouter(tags=["user-quizzes"])
 
 
 @public_router.get("/cases/{case_id}/quiz", response_model=list[PublicQuizQuestionItem])
@@ -64,3 +69,12 @@ def remove_question(
 ) -> Response:
     delete_question(db, question_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@user_router.post("/quiz/submit", response_model=QuizSubmissionResponse)
+def submit_quiz_endpoint(
+    payload: QuizSubmissionRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> QuizSubmissionResponse:
+    return submit_quiz(db, current_user, payload)

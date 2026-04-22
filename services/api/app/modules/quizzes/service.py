@@ -1,17 +1,25 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.domain.enums import CaseStatus, QuestionType
+from app.domain.enums import CaseStatus, LearningStatus, QuestionType
 from app.modules.cases.repository import get_case
+from app.modules.learning import repository as learning_repository
+from app.modules.learning.models import LearningProgress, WrongQuestion
 from app.modules.quizzes import repository
-from app.modules.quizzes.models import QuizQuestion, QuizQuestionOption
+from app.modules.quizzes.models import QuizAttempt, QuizAttemptItem, QuizQuestion, QuizQuestionOption
 from app.modules.quizzes.schemas import (
     AdminQuizOptionItem,
     AdminQuizQuestionItem,
     AdminQuizQuestionUpsertRequest,
     PublicQuizOptionItem,
     PublicQuizQuestionItem,
+    QuizSubmissionRequest,
+    QuizSubmissionResponse,
+    QuizSubmissionResultItem,
 )
+from app.modules.users.models import User
 
 
 def _validate_options(payload: AdminQuizQuestionUpsertRequest) -> None:
@@ -193,3 +201,131 @@ def delete_question(session: Session, question_id: str) -> None:
 
     session.delete(question)
     session.commit()
+
+
+def submit_quiz(
+    session: Session,
+    current_user: User,
+    payload: QuizSubmissionRequest,
+) -> QuizSubmissionResponse:
+    ecg_case = get_case(session, payload.case_id)
+    if ecg_case is None or ecg_case.status != CaseStatus.published:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Published case not found.",
+        )
+
+    questions = [
+        item
+        for item in repository.list_questions_by_case(session, payload.case_id)
+        if item.is_active
+    ]
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="No active quiz questions are available for this case.",
+        )
+
+    answers_map = {item.question_id: item for item in payload.answers}
+    submitted_at = datetime.now(timezone.utc)
+    attempt = QuizAttempt(
+        user_id=current_user.id,
+        case_id=payload.case_id,
+        mode=payload.mode,
+        total_questions=len(questions),
+        correct_count=0,
+        score=0,
+        started_at=submitted_at,
+        submitted_at=submitted_at,
+    )
+    session.add(attempt)
+    session.flush()
+
+    results: list[QuizSubmissionResultItem] = []
+    correct_count = 0
+    for question in questions:
+        answer = answers_map.get(question.id)
+        selected_option_ids = answer.selected_option_ids if answer else []
+        valid_option_ids = {option.id for option in question.options}
+        filtered_option_ids = [
+            option_id for option_id in selected_option_ids if option_id in valid_option_ids
+        ]
+        correct_option_ids = sorted(
+            [option.id for option in question.options if option.is_correct]
+        )
+        is_correct = set(filtered_option_ids) == set(correct_option_ids)
+        if is_correct:
+            correct_count += 1
+
+        session.add(
+            QuizAttemptItem(
+                attempt_id=attempt.id,
+                question_id=question.id,
+                selected_option_ids=filtered_option_ids,
+                is_correct=is_correct,
+            )
+        )
+
+        if not is_correct:
+            wrong_item = learning_repository.get_wrong_question(
+                session,
+                user_id=current_user.id,
+                question_id=question.id,
+            )
+            if wrong_item is None:
+                wrong_item = WrongQuestion(
+                    user_id=current_user.id,
+                    question_id=question.id,
+                    wrong_count=1,
+                    last_wrong_at=submitted_at,
+                )
+            else:
+                wrong_item.wrong_count += 1
+                wrong_item.last_wrong_at = submitted_at
+            session.add(wrong_item)
+
+        results.append(
+            QuizSubmissionResultItem(
+                question_id=question.id,
+                selected_option_ids=filtered_option_ids,
+                correct_option_ids=correct_option_ids,
+                is_correct=is_correct,
+                explanation=question.explanation,
+            )
+        )
+
+    score = round(correct_count * 100 / len(questions))
+    attempt.correct_count = correct_count
+    attempt.score = score
+    session.add(attempt)
+
+    progress = learning_repository.get_learning_progress(
+        session,
+        user_id=current_user.id,
+        case_id=payload.case_id,
+    )
+    if progress is None:
+        progress = LearningProgress(
+            user_id=current_user.id,
+            case_id=payload.case_id,
+            status=LearningStatus.completed,
+            completion_rate=100,
+            best_score=score,
+            last_viewed_at=submitted_at,
+        )
+    else:
+        progress.status = LearningStatus.completed
+        progress.completion_rate = 100
+        progress.best_score = max(progress.best_score, score)
+        progress.last_viewed_at = submitted_at
+    session.add(progress)
+
+    session.commit()
+    return QuizSubmissionResponse(
+        attempt_id=attempt.id,
+        case_id=payload.case_id,
+        score=score,
+        total_questions=len(questions),
+        correct_count=correct_count,
+        items=results,
+    )

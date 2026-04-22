@@ -17,6 +17,11 @@ from app.modules.users.models import Role, User
 @pytest.fixture()
 def db_session_factory(tmp_path, monkeypatch) -> Iterator[sessionmaker]:
     database_path = tmp_path / "test.db"
+    storage_path = tmp_path / "storage"
+    monkeypatch.setenv("LOCAL_STORAGE_PATH", str(storage_path))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "http://testserver")
+    get_settings.cache_clear()
+
     engine = create_engine(
         f"sqlite:///{database_path}",
         connect_args={"check_same_thread": False},
@@ -55,6 +60,7 @@ def db_session_factory(tmp_path, monkeypatch) -> Iterator[sessionmaker]:
 
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
+    get_settings.cache_clear()
 
 
 @pytest.fixture()
