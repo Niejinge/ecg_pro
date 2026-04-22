@@ -23,6 +23,7 @@ build-backend = "setuptools.build_meta"
 [project.optional-dependencies]
 dev = [
   "httpx>=0.28,<1.0",
+  "pytest>=8.4,<9.0",
 ]
 
 [tool.setuptools.packages.find]
