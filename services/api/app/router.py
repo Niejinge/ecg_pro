@@ -10,4 +10,3 @@ api_router.include_router(system_router, prefix="/system")
 api_router.include_router(auth_router, prefix="/auth")
 api_router.include_router(cases_router, prefix="/public")
 api_router.include_router(admin_router, prefix="/admin")
-

@@ -23,6 +23,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+*.egg-info/
 
 # Environment
 .env
@@ -33,4 +34,3 @@ venv/
 services/api/storage/
 infra/docker/postgres_data/
 infra/docker/minio_data/
-

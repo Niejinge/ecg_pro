@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_debug: bool = True
     api_v1_prefix: str = "/api/v1"
 
-    secret_key: str = "change-me"
+    secret_key: str = "change-me-please-use-a-32-character-secret"
     access_token_expire_minutes: int = 120
 
     database_url: str = (
@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     local_storage_path: str = "/app/storage"
     public_base_url: str = "http://localhost:8080"
     minio_bucket: str = "ecg-assets"
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str = "Admin123456"
+    bootstrap_admin_display_name: str = "ECG Pro Admin"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -33,4 +36,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

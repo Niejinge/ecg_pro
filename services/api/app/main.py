@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.db.models import import_models  # noqa: F401
 from app.router import api_router
 
 settings = get_settings()
@@ -27,4 +28,3 @@ def health_check() -> dict[str, str]:
 
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
-

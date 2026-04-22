@@ -6,8 +6,17 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=6, max_length=128)
 
 
+class AuthUser(BaseModel):
+    id: str
+    username: str
+    display_name: str
+    is_active: bool
+    is_superuser: bool
+    role_codes: list[str]
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user_role: str
-
+    expires_in: int
+    user: AuthUser
