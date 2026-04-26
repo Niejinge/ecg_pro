@@ -3,24 +3,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:user_app/main.dart';
 
 void main() {
-  testWidgets('guest user can browse case list and detail page', (
+  testWidgets('user can browse case list and detail page', (
     tester,
   ) async {
     await tester.pumpWidget(
       UserApp(
         repository: _FakeUserRepository(),
         sessionStore: _MemoryUserSessionStore(),
+        initialSession: const UserSession(
+          accessToken: 'demo-token',
+          expiresIn: 7200,
+          user: AuthUser(
+            id: 'user-1',
+            username: 'learner',
+            displayName: '学习用户',
+            isActive: true,
+            isSuperuser: false,
+            roleCodes: ['learner'],
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('ECG Pro 学习端'), findsOneWidget);
     expect(find.text('示例学习案例'), findsOneWidget);
-    expect(find.text('房颤与不规则心律识别'), findsOneWidget);
-    expect(find.text('游客模式可浏览'), findsOneWidget);
+    expect(find.text('已登录学习模式'), findsOneWidget);
+    expect(find.text('进入案例'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('房颤与不规则心律识别'));
-    await tester.tap(find.text('房颤与不规则心律识别'));
+    await tester.ensureVisible(find.text('进入案例'));
+    await tester.tap(find.text('进入案例'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
 
@@ -53,9 +65,43 @@ void main() {
 
     expect(find.text('已登录学习模式'), findsOneWidget);
     expect(find.text('学习用户'), findsOneWidget);
+    expect(find.text('最近浏览'), findsOneWidget);
     expect(find.text('继续学习'), findsWidgets);
     expect(find.text('复习案例'), findsOneWidget);
     expect(find.text('错题数'), findsOneWidget);
+  });
+
+  testWidgets('signed in user can switch public case pages', (tester) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+        initialSession: const UserSession(
+          accessToken: 'demo-token',
+          expiresIn: 7200,
+          user: AuthUser(
+            id: 'user-1',
+            username: 'learner',
+            displayName: '学习用户',
+            isActive: true,
+            isSuperuser: false,
+            roleCodes: ['learner'],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('第 1 页'), findsOneWidget);
+    expect(find.text('下一页'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('下一页'));
+    await tester.tap(find.text('下一页'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.text('第 2 页'), findsOneWidget);
+    expect(find.text('上一页'), findsOneWidget);
   });
 
   testWidgets('signed in user can submit quiz and open result page', (
@@ -201,6 +247,26 @@ class _FakeUserRepository implements UserRepository {
     int page = 1,
     int pageSize = 20,
   }) async {
+    if (page == 2) {
+      return const PublicCaseListResponse(
+        items: [
+          PublicCaseListItem(
+            id: 'case-002',
+            caseCode: 'ECG-002',
+            title: '室速与宽QRS鉴别',
+            diagnosis: '单形性室速',
+            difficulty: DifficultyLevel.intermediate,
+            riskLevel: RiskLevel.high,
+            categoryName: '快速性心律失常',
+          ),
+        ],
+        total: 2,
+        page: 2,
+        pageSize: 20,
+        hasNext: false,
+      );
+    }
+
     return const PublicCaseListResponse(
       items: [
         PublicCaseListItem(
@@ -213,10 +279,10 @@ class _FakeUserRepository implements UserRepository {
           categoryName: '心律失常',
         ),
       ],
-      total: 1,
+      total: 2,
       page: 1,
       pageSize: 20,
-      hasNext: false,
+      hasNext: true,
     );
   }
 
@@ -237,6 +303,16 @@ class _FakeUserRepository implements UserRepository {
     UserSession session,
   ) async {
     return [
+      LearningProgressItem(
+        caseId: 'case-002',
+        caseCode: 'ECG-002',
+        title: '室速与宽QRS鉴别',
+        diagnosis: '单形性室速',
+        status: LearningStatus.inProgress,
+        completionRate: 60,
+        bestScore: 80,
+        lastViewedAt: DateTime(2026, 4, 28),
+      ),
       LearningProgressItem(
         caseId: 'case-001',
         caseCode: 'ECG-001',

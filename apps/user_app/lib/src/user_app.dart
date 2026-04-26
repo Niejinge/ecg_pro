@@ -151,6 +151,8 @@ class _UserHomePageState extends State<UserHomePage> {
   List<FavoriteItem> _favorites = const [];
   List<WrongQuestionItem> _wrongQuestions = const [];
   String? _selectedCategoryId;
+  int _currentPage = 1;
+  bool _featuredOnly = true;
   String? _errorMessage;
   bool _loading = true;
 
@@ -185,7 +187,8 @@ class _UserHomePageState extends State<UserHomePage> {
       final cases = await widget.repository.fetchCases(
         keyword: _searchController.text.trim(),
         categoryId: _selectedCategoryId,
-        isFeatured: true,
+        isFeatured: _featuredOnly,
+        page: _currentPage,
       );
       List<LearningProgressItem> progress = const [];
       List<FavoriteItem> favorites = const [];
@@ -199,6 +202,20 @@ class _UserHomePageState extends State<UserHomePage> {
           widget.session!,
         );
       }
+      progress.sort((left, right) {
+        final leftTime = left.lastViewedAt;
+        final rightTime = right.lastViewedAt;
+        if (leftTime == null && rightTime == null) {
+          return 0;
+        }
+        if (leftTime == null) {
+          return 1;
+        }
+        if (rightTime == null) {
+          return -1;
+        }
+        return rightTime.compareTo(leftTime);
+      });
       if (!mounted) {
         return;
       }
@@ -253,6 +270,16 @@ class _UserHomePageState extends State<UserHomePage> {
         ),
       ),
     );
+    await _loadInitialData();
+  }
+
+  Future<void> _goToPage(int page) async {
+    if (page < 1 || page == _currentPage) {
+      return;
+    }
+    setState(() {
+      _currentPage = page;
+    });
     await _loadInitialData();
   }
 
@@ -336,6 +363,21 @@ class _UserHomePageState extends State<UserHomePage> {
                       onChanged: (value) {
                         setState(() {
                           _selectedCategoryId = value;
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: wideLayout ? 200 : double.infinity,
+                    child: SwitchListTile(
+                      value: _featuredOnly,
+                      title: const Text('精选优先'),
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (value) {
+                        setState(() {
+                          _featuredOnly = value;
+                          _currentPage = 1;
                         });
                       },
                     ),
@@ -373,7 +415,7 @@ class _UserHomePageState extends State<UserHomePage> {
             title: '示例学习案例',
             subtitle: _caseResponse == null
                 ? '优先展示精选案例，帮助你从高频场景开始练习。'
-                : '共 ${_caseResponse!.total} 个公开案例，当前页 ${_caseResponse!.items.length} 个。',
+                : '共 ${_caseResponse!.total} 个公开案例，第 ${_caseResponse!.page} 页当前 ${_caseResponse!.items.length} 个。',
             child: _buildCaseSection(),
           ),
         ],
@@ -401,20 +443,72 @@ class _UserHomePageState extends State<UserHomePage> {
     }
 
     return Column(
-      children: items
-          .map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-              child: _CaseSummaryCard(
-                item: item,
-                isFavorite: _favorites.any(
-                  (favorite) => favorite.caseId == item.id,
-                ),
-                onTap: () => _openCaseDetail(item.id),
+      children: [
+        ...items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: _CaseSummaryCard(
+              item: item,
+              isFavorite: _favorites.any(
+                (favorite) => favorite.caseId == item.id,
               ),
+              onTap: () => _openCaseDetail(item.id),
             ),
-          )
-          .toList(),
+          ),
+        ),
+        if (_caseResponse != null)
+          _PaginationBar(
+            page: _caseResponse!.page,
+            hasNext: _caseResponse!.hasNext,
+            onPrevious: _loading
+                ? null
+                : () => _goToPage(_caseResponse!.page - 1),
+            onNext: _loading ? null : () => _goToPage(_caseResponse!.page + 1),
+          ),
+      ],
+    );
+  }
+}
+
+class _PaginationBar extends StatelessWidget {
+  const _PaginationBar({
+    required this.page,
+    required this.hasNext,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int page;
+  final bool hasNext;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      child: Row(
+        children: [
+          OutlinedButton.icon(
+            onPressed: page > 1 ? onPrevious : null,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('上一页'),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Text(
+            '第 $page 页',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: hasNext ? onNext : null,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: const Text('下一页'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1180,6 +1274,10 @@ class _LearningOverviewSection extends StatelessWidget {
         : progressItems
               .map((item) => item.bestScore)
               .reduce((value, element) => value > element ? value : element);
+    final recentItems = progressItems
+        .where((item) => item.lastViewedAt != null)
+        .take(3)
+        .toList();
 
     return EcgSectionCard(
       title: '学习进度',
@@ -1198,6 +1296,31 @@ class _LearningOverviewSection extends StatelessWidget {
               _MetricCard(label: '最佳成绩', value: '$bestScore'),
             ],
           ),
+          if (recentItems.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '最近浏览',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Wrap(
+              spacing: AppSpacing.lg,
+              runSpacing: AppSpacing.lg,
+              children: recentItems
+                  .map(
+                    (item) => _ActionCard(
+                      title: item.title,
+                      subtitle:
+                          '${item.diagnosis} · 最近查看 ${_formatRelativeDate(item.lastViewedAt!)}',
+                      buttonLabel: '继续学习',
+                      onPressed: () => onOpenCase(item.caseId),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
           if (progressItems.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.xl),
             Text(
@@ -1876,4 +1999,19 @@ Color _riskColor(RiskLevel level) {
     case RiskLevel.critical:
       return AppColors.danger;
   }
+}
+
+String _formatRelativeDate(DateTime value) {
+  final now = DateTime.now();
+  final difference = now.difference(value);
+  if (difference.inDays >= 1) {
+    return '${difference.inDays} 天前';
+  }
+  if (difference.inHours >= 1) {
+    return '${difference.inHours} 小时前';
+  }
+  if (difference.inMinutes >= 1) {
+    return '${difference.inMinutes} 分钟前';
+  }
+  return '刚刚';
 }
