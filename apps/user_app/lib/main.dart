@@ -1,5 +1,4 @@
 import 'package:ecg_api/ecg_api.dart';
-import 'package:ecg_core/ecg_core.dart';
 import 'package:ecg_ui/ecg_ui.dart';
 import 'package:flutter/material.dart';
 
@@ -50,7 +49,7 @@ class UserHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const apiClient = EcgApiClient(baseUrl: 'http://localhost:8000');
+    final apiClient = EcgApiClient(baseUrl: 'http://localhost:8000');
 
     return EcgScaffold(
       title: 'ECG Pro 学习端',
@@ -100,9 +99,7 @@ class UserHomePage extends StatelessWidget {
 }
 
 class _CasePreviewCard extends StatelessWidget {
-  const _CasePreviewCard({
-    required this.caseSummary,
-  });
+  const _CasePreviewCard({required this.caseSummary});
 
   final EcgCaseSummary caseSummary;
 
@@ -118,9 +115,9 @@ class _CasePreviewCard extends StatelessWidget {
             children: [
               Text(
                 caseSummary.title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(

@@ -13,6 +13,7 @@ dependencies:
     path: ../../packages/ecg_api
   ecg_ui:
     path: ../../packages/ecg_ui
+  file_picker: ^10.3.2
 
 dev_dependencies:
   flutter_test:
