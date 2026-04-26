@@ -1,6 +1,8 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:ecg_api/ecg_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminSession {
   const AdminSession({
@@ -12,6 +14,79 @@ class AdminSession {
   final String accessToken;
   final AuthUser user;
   final int expiresIn;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'access_token': accessToken,
+      'expires_in': expiresIn,
+      'user': {
+        'id': user.id,
+        'username': user.username,
+        'display_name': user.displayName,
+        'is_active': user.isActive,
+        'is_superuser': user.isSuperuser,
+        'role_codes': user.roleCodes,
+      },
+    };
+  }
+
+  factory AdminSession.fromJson(Map<String, dynamic> json) {
+    return AdminSession(
+      accessToken: json['access_token'] as String,
+      expiresIn: json['expires_in'] as int,
+      user: AuthUser.fromJson(json['user'] as Map<String, dynamic>),
+    );
+  }
+}
+
+abstract class AdminSessionStore {
+  Future<AdminSession?> read();
+
+  Future<void> write(AdminSession session);
+
+  Future<void> clear();
+}
+
+class SharedPreferencesAdminSessionStore implements AdminSessionStore {
+  SharedPreferencesAdminSessionStore({SharedPreferences? preferences})
+    : _preferences = preferences;
+
+  static const _sessionKey = 'admin_session_v1';
+
+  final SharedPreferences? _preferences;
+
+  Future<SharedPreferences> _prefs() async {
+    return _preferences ?? SharedPreferences.getInstance();
+  }
+
+  @override
+  Future<AdminSession?> read() async {
+    final prefs = await _prefs();
+    final raw = prefs.getString(_sessionKey);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final payload = jsonDecode(raw) as Map<String, dynamic>;
+      return AdminSession.fromJson(payload);
+    } catch (_) {
+      await prefs.remove(_sessionKey);
+      return null;
+    }
+  }
+
+  @override
+  Future<void> write(AdminSession session) async {
+    final prefs = await _prefs();
+    await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+  }
+
+  @override
+  Future<void> clear() async {
+    final prefs = await _prefs();
+    await prefs.remove(_sessionKey);
+  }
 }
 
 abstract class AdminRepository {

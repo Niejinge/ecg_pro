@@ -8,32 +8,37 @@ void main() {
   testWidgets('admin app shows login page before authentication', (
     tester,
   ) async {
-    await tester.pumpWidget(AdminApp(repository: _FakeAdminRepository()));
+    await tester.pumpWidget(
+      AdminApp(
+        repository: _FakeAdminRepository(),
+        sessionStore: _MemorySessionStore(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('管理员登录'), findsOneWidget);
     expect(find.text('进入后台'), findsOneWidget);
   });
 
-  testWidgets('admin app shows dashboard after session is injected', (
+  testWidgets('admin app restores dashboard from persisted session', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      AdminApp(
-        repository: _FakeAdminRepository(),
-        initialSession: const AdminSession(
-          accessToken: 'demo-token',
-          expiresIn: 7200,
-          user: AuthUser(
-            id: 'user-1',
-            username: 'admin',
-            displayName: 'Admin User',
-            isActive: true,
-            isSuperuser: true,
-            roleCodes: ['admin'],
-          ),
+    final sessionStore = _MemorySessionStore(
+      initialSession: const AdminSession(
+        accessToken: 'demo-token',
+        expiresIn: 7200,
+        user: AuthUser(
+          id: 'user-1',
+          username: 'admin',
+          displayName: 'Admin User',
+          isActive: true,
+          isSuperuser: true,
+          roleCodes: ['admin'],
         ),
       ),
+    );
+    await tester.pumpWidget(
+      AdminApp(repository: _FakeAdminRepository(), sessionStore: sessionStore),
     );
     await tester.pumpAndSettle();
 
@@ -42,6 +47,28 @@ void main() {
     expect(find.text('分类与标签'), findsOneWidget);
     expect(find.text('案例管理'), findsOneWidget);
   });
+}
+
+class _MemorySessionStore implements AdminSessionStore {
+  _MemorySessionStore({AdminSession? initialSession})
+    : _session = initialSession;
+
+  AdminSession? _session;
+
+  @override
+  Future<void> clear() async {
+    _session = null;
+  }
+
+  @override
+  Future<AdminSession?> read() async {
+    return _session;
+  }
+
+  @override
+  Future<void> write(AdminSession session) async {
+    _session = session;
+  }
 }
 
 class _FakeAdminRepository implements AdminRepository {

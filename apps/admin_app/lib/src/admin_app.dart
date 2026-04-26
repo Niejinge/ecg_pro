@@ -8,19 +8,25 @@ import 'admin_repository.dart';
 enum _AdminSection { dashboard, taxonomy, cases }
 
 class AdminApp extends StatefulWidget {
-  AdminApp({super.key, AdminRepository? repository, this.initialSession})
-    : repository =
-          repository ??
-          ApiAdminRepository(
-            EcgApiClient(
-              baseUrl: const String.fromEnvironment(
-                'ECG_API_BASE_URL',
-                defaultValue: 'http://localhost:8000',
-              ),
-            ),
-          );
+  AdminApp({
+    super.key,
+    AdminRepository? repository,
+    AdminSessionStore? sessionStore,
+    this.initialSession,
+  }) : repository =
+           repository ??
+           ApiAdminRepository(
+             EcgApiClient(
+               baseUrl: const String.fromEnvironment(
+                 'ECG_API_BASE_URL',
+                 defaultValue: 'http://localhost:8000',
+               ),
+             ),
+           ),
+       sessionStore = sessionStore ?? SharedPreferencesAdminSessionStore();
 
   final AdminRepository repository;
+  final AdminSessionStore sessionStore;
   final AdminSession? initialSession;
 
   @override
@@ -29,11 +35,52 @@ class AdminApp extends StatefulWidget {
 
 class _AdminAppState extends State<AdminApp> {
   AdminSession? _session;
+  bool _restoringSession = true;
 
   @override
   void initState() {
     super.initState();
-    _session = widget.initialSession;
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    final initialSession = widget.initialSession;
+    if (initialSession != null) {
+      setState(() {
+        _session = initialSession;
+        _restoringSession = false;
+      });
+      return;
+    }
+
+    final restored = await widget.sessionStore.read();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = restored;
+      _restoringSession = false;
+    });
+  }
+
+  Future<void> _handleLogin(AdminSession session) async {
+    await widget.sessionStore.write(session);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = session;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    await widget.sessionStore.clear();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = null;
+    });
   }
 
   @override
@@ -42,24 +89,38 @@ class _AdminAppState extends State<AdminApp> {
       title: 'ECG Pro Admin',
       debugShowCheckedModeBanner: false,
       theme: EcgAppTheme.light(),
-      home: _session == null
+      home: _restoringSession
+          ? const _AdminBootPage()
+          : _session == null
           ? _AdminLoginPage(
               repository: widget.repository,
-              onLogin: (session) {
-                setState(() {
-                  _session = session;
-                });
-              },
+              onLogin: _handleLogin,
             )
           : _AdminShell(
               repository: widget.repository,
               session: _session!,
-              onLogout: () {
-                setState(() {
-                  _session = null;
-                });
-              },
+              onLogout: _handleLogout,
             ),
+    );
+  }
+}
+
+class _AdminBootPage extends StatelessWidget {
+  const _AdminBootPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: AppSpacing.lg),
+            Text('正在恢复后台会话...'),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1462,6 +1523,7 @@ class _CategoryDialog extends StatefulWidget {
 }
 
 class _CategoryDialogState extends State<_CategoryDialog> {
+  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _slugController;
   late final TextEditingController _descriptionController;
@@ -1497,43 +1559,71 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       title: Text(widget.category == null ? '新增分类' : '编辑分类'),
       content: SizedBox(
         width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: '名称'),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _slugController,
-              decoration: const InputDecoration(labelText: 'Slug'),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: '描述'),
-              minLines: 2,
-              maxLines: 4,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _sortOrderController,
-              decoration: const InputDecoration(labelText: '排序'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('前台可见'),
-              value: _isVisible,
-              onChanged: (value) {
-                setState(() {
-                  _isVisible = value;
-                });
-              },
-            ),
-          ],
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: '名称'),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '请输入分类名称';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextFormField(
+                controller: _slugController,
+                decoration: const InputDecoration(labelText: 'Slug'),
+                validator: (value) {
+                  final slug = value?.trim() ?? '';
+                  if (slug.isEmpty) {
+                    return '请输入分类 slug';
+                  }
+                  if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+                    return 'slug 仅支持小写字母、数字和连字符';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(labelText: '描述'),
+                minLines: 2,
+                maxLines: 4,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextFormField(
+                controller: _sortOrderController,
+                decoration: const InputDecoration(labelText: '排序'),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '请输入排序值';
+                  }
+                  if (int.tryParse(value.trim()) == null) {
+                    return '排序必须是整数';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('前台可见'),
+                value: _isVisible,
+                onChanged: (value) {
+                  setState(() {
+                    _isVisible = value;
+                  });
+                },
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1543,6 +1633,9 @@ class _CategoryDialogState extends State<_CategoryDialog> {
         ),
         FilledButton(
           onPressed: () {
+            if (!_formKey.currentState!.validate()) {
+              return;
+            }
             Navigator.of(context).pop(
               CategoryUpsertInput(
                 name: _nameController.text.trim(),
@@ -1570,6 +1663,7 @@ class _TagDialog extends StatefulWidget {
 }
 
 class _TagDialogState extends State<_TagDialog> {
+  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _slugController;
   late final TextEditingController _descriptionController;
@@ -1598,26 +1692,45 @@ class _TagDialogState extends State<_TagDialog> {
       title: Text(widget.tag == null ? '新增标签' : '编辑标签'),
       content: SizedBox(
         width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: '名称'),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _slugController,
-              decoration: const InputDecoration(labelText: 'Slug'),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: '描述'),
-              minLines: 2,
-              maxLines: 4,
-            ),
-          ],
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: '名称'),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '请输入标签名称';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextFormField(
+                controller: _slugController,
+                decoration: const InputDecoration(labelText: 'Slug'),
+                validator: (value) {
+                  final slug = value?.trim() ?? '';
+                  if (slug.isEmpty) {
+                    return '请输入标签 slug';
+                  }
+                  if (!RegExp(r'^[a-z0-9-]+$').hasMatch(slug)) {
+                    return 'slug 仅支持小写字母、数字和连字符';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(labelText: '描述'),
+                minLines: 2,
+                maxLines: 4,
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1627,6 +1740,9 @@ class _TagDialogState extends State<_TagDialog> {
         ),
         FilledButton(
           onPressed: () {
+            if (!_formKey.currentState!.validate()) {
+              return;
+            }
             Navigator.of(context).pop(
               TagUpsertInput(
                 name: _nameController.text.trim(),
@@ -1689,6 +1805,7 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
 
   bool _loading = false;
   bool _saving = false;
+  bool _uploadingImage = false;
   DifficultyLevel _difficulty = DifficultyLevel.beginner;
   RiskLevel _riskLevel = RiskLevel.low;
   String? _categoryId;
@@ -1841,19 +1958,32 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
   }
 
   Future<void> _saveCase() async {
-    if (_caseCodeController.text.trim().isEmpty ||
-        _titleController.text.trim().isEmpty ||
-        _diagnosisController.text.trim().isEmpty) {
+    final caseCode = _caseCodeController.text.trim();
+    final title = _titleController.text.trim();
+    final diagnosis = _diagnosisController.text.trim();
+    if (caseCode.isEmpty || title.isEmpty || diagnosis.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('案例编号、标题和诊断是必填项。')));
       return;
     }
+    if (_parseListField(_keyLeadsController.text).isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请至少填写一个关键导联。')));
+      return;
+    }
+    if (_categoryId == null || _categoryId!.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请为案例选择一个分类。')));
+      return;
+    }
 
     final input = AdminCaseUpsertInput(
-      caseCode: _caseCodeController.text.trim(),
-      title: _titleController.text.trim(),
-      diagnosis: _diagnosisController.text.trim(),
+      caseCode: caseCode,
+      title: title,
+      diagnosis: diagnosis,
       summary: _nullIfEmpty(_summaryController.text),
       rhythmType: _nullIfEmpty(_rhythmTypeController.text),
       heartRate: _nullIfEmpty(_heartRateController.text),
@@ -1927,7 +2057,7 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
   }
 
   Future<void> _uploadImage() async {
-    if (_currentCaseId == null) {
+    if (_currentCaseId == null || _uploadingImage) {
       return;
     }
     final result = await FilePicker.platform.pickFiles(
@@ -1940,6 +2070,9 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
       return;
     }
 
+    setState(() {
+      _uploadingImage = true;
+    });
     try {
       await widget.repository.uploadCaseImage(
         widget.session,
@@ -1964,6 +2097,12 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('图片上传失败：$error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploadingImage = false;
+        });
+      }
     }
   }
 
@@ -2519,8 +2658,8 @@ class _CaseEditorDialogState extends State<_CaseEditorDialog> {
         title: '图片管理',
         subtitle: '上传案例图、切换主图并调整顺序。',
         trailing: FilledButton(
-          onPressed: _uploadImage,
-          child: const Text('上传图片'),
+          onPressed: _uploadingImage ? null : _uploadImage,
+          child: Text(_uploadingImage ? '上传中...' : '上传图片'),
         ),
         child: images.isEmpty
             ? const _EmptyState(
@@ -3028,10 +3167,26 @@ class _QuestionEditorDialogState extends State<_QuestionEditorDialog> {
                 .where((item) => item.contentController.text.trim().isNotEmpty)
                 .toList();
             final correctCount = options.where((item) => item.isCorrect).length;
+            final sortOrder = int.tryParse(_sortOrderController.text.trim());
             if (stem.isEmpty || options.length < 2 || correctCount == 0) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('请完善题干、至少两个选项，并设置正确答案。')),
               );
+              return;
+            }
+            if (_options.any(
+              (item) =>
+                  item.contentController.text.trim().isEmpty && item.isCorrect,
+            )) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('正确答案对应的选项内容不能为空。')));
+              return;
+            }
+            if (sortOrder == null || sortOrder <= 0) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('题目排序必须是大于 0 的整数。')));
               return;
             }
             if ((_questionType == QuestionType.singleChoice ||
@@ -3048,9 +3203,7 @@ class _QuestionEditorDialogState extends State<_QuestionEditorDialog> {
                 explanation: _nullIfEmpty(_explanationController.text),
                 questionType: _questionType,
                 difficulty: _difficulty,
-                sortOrder:
-                    int.tryParse(_sortOrderController.text.trim()) ??
-                    widget.nextSortOrder,
+                sortOrder: sortOrder,
                 isActive: _isActive,
                 options: [
                   for (var i = 0; i < options.length; i++)
