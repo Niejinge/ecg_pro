@@ -294,6 +294,7 @@ class _UserHomePageState extends State<UserHomePage> {
             favorites: _favorites,
             wrongQuestions: _wrongQuestions,
             onLoginPressed: _openLoginDialog,
+            onOpenCase: _openCaseDetail,
           ),
           const SizedBox(height: AppSpacing.xl),
           EcgSectionCard(
@@ -766,19 +767,13 @@ class _QuizPageState extends State<QuizPage> {
       if (!mounted) {
         return;
       }
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('测验完成'),
-          content: Text(
-            '本次得分 ${result.score} 分，答对 ${result.correctCount}/${result.totalQuestions} 题。',
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => QuizResultPage(
+            detail: widget.detail,
+            questions: widget.questions,
+            result: result,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     } on EcgApiException catch (error) {
@@ -861,6 +856,90 @@ class _QuizPageState extends State<QuizPage> {
                   : const Icon(Icons.check_circle_rounded),
               label: Text(_submitting ? '提交中...' : '提交测验'),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class QuizResultPage extends StatelessWidget {
+  const QuizResultPage({
+    super.key,
+    required this.detail,
+    required this.questions,
+    required this.result,
+  });
+
+  final CaseDetailItem detail;
+  final List<PublicQuizQuestionItem> questions;
+  final QuizSubmissionResponse result;
+
+  @override
+  Widget build(BuildContext context) {
+    final questionMap = {
+      for (final question in questions) question.id: question,
+    };
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('测验结果')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    detail.title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Wrap(
+                    spacing: AppSpacing.lg,
+                    runSpacing: AppSpacing.lg,
+                    children: [
+                      _MetricCard(label: '本次得分', value: '${result.score}'),
+                      _MetricCard(
+                        label: '答对题数',
+                        value:
+                            '${result.correctCount}/${result.totalQuestions}',
+                      ),
+                      _MetricCard(
+                        label: '提交结果',
+                        value: result.correctCount == result.totalQuestions
+                            ? '全部正确'
+                            : '继续复习',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '逐题解析',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            for (final item in result.items) ...[
+              _QuizResultCard(
+                question: questionMap[item.questionId],
+                resultItem: item,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
           ],
         ),
       ),
@@ -1069,6 +1148,7 @@ class _LearningOverviewSection extends StatelessWidget {
     required this.favorites,
     required this.wrongQuestions,
     required this.onLoginPressed,
+    required this.onOpenCase,
   });
 
   final UserSession? session;
@@ -1076,6 +1156,7 @@ class _LearningOverviewSection extends StatelessWidget {
   final List<FavoriteItem> favorites;
   final List<WrongQuestionItem> wrongQuestions;
   final VoidCallback onLoginPressed;
+  final ValueChanged<String> onOpenCase;
 
   @override
   Widget build(BuildContext context) {
@@ -1103,15 +1184,71 @@ class _LearningOverviewSection extends StatelessWidget {
     return EcgSectionCard(
       title: '学习进度',
       subtitle: '已同步你的学习记录，可继续回顾已看案例并针对错题复习。',
-      child: Wrap(
-        spacing: AppSpacing.lg,
-        runSpacing: AppSpacing.lg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _MetricCard(label: '已开始案例', value: '${progressItems.length}'),
-          _MetricCard(label: '已完成案例', value: '$completedCount'),
-          _MetricCard(label: '已收藏', value: '${favorites.length}'),
-          _MetricCard(label: '错题数', value: '${wrongQuestions.length}'),
-          _MetricCard(label: '最佳成绩', value: '$bestScore'),
+          Wrap(
+            spacing: AppSpacing.lg,
+            runSpacing: AppSpacing.lg,
+            children: [
+              _MetricCard(label: '已开始案例', value: '${progressItems.length}'),
+              _MetricCard(label: '已完成案例', value: '$completedCount'),
+              _MetricCard(label: '已收藏', value: '${favorites.length}'),
+              _MetricCard(label: '错题数', value: '${wrongQuestions.length}'),
+              _MetricCard(label: '最佳成绩', value: '$bestScore'),
+            ],
+          ),
+          if (progressItems.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '继续学习',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Wrap(
+              spacing: AppSpacing.lg,
+              runSpacing: AppSpacing.lg,
+              children: progressItems
+                  .take(3)
+                  .map(
+                    (item) => _ActionCard(
+                      title: item.title,
+                      subtitle:
+                          '${item.diagnosis} · 完成度 ${item.completionRate}%',
+                      buttonLabel: '继续学习',
+                      onPressed: () => onOpenCase(item.caseId),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (wrongQuestions.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '错题复习',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Wrap(
+              spacing: AppSpacing.lg,
+              runSpacing: AppSpacing.lg,
+              children: wrongQuestions
+                  .take(2)
+                  .map(
+                    (item) => _ActionCard(
+                      title: item.caseTitle,
+                      subtitle: '${item.stem} · 错误 ${item.wrongCount} 次',
+                      buttonLabel: '复习案例',
+                      onPressed: () => onOpenCase(item.caseId),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
@@ -1149,6 +1286,53 @@ class _MetricCard extends StatelessWidget {
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 320,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            subtitle,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          FilledButton.tonal(onPressed: onPressed, child: Text(buttonLabel)),
         ],
       ),
     );
@@ -1325,6 +1509,85 @@ class _QuizQuestionCard extends StatelessWidget {
                 controlAffinity: ListTileControlAffinity.leading,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuizResultCard extends StatelessWidget {
+  const _QuizResultCard({required this.question, required this.resultItem});
+
+  final PublicQuizQuestionItem? question;
+  final QuizSubmissionResultItem resultItem;
+
+  @override
+  Widget build(BuildContext context) {
+    final optionMap = {
+      for (final option in question?.options ?? const <PublicQuizOptionItem>[])
+        option.id: option,
+    };
+    final selectedLabels = resultItem.selectedOptionIds
+        .map((id) => optionMap[id]?.label ?? id)
+        .join('、');
+    final correctLabels = resultItem.correctOptionIds
+        .map((id) => optionMap[id]?.label ?? id)
+        .join('、');
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: resultItem.isCorrect ? AppColors.success : AppColors.warning,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  question?.stem ?? '题目 ${resultItem.questionId}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _Badge(
+                text: resultItem.isCorrect ? '回答正确' : '需要复习',
+                color: resultItem.isCorrect
+                    ? AppColors.success
+                    : AppColors.warning,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            '你的答案：${selectedLabels.isEmpty ? '未作答' : selectedLabels}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            '正确答案：$correctLabels',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
+          ),
+          if (resultItem.explanation != null &&
+              resultItem.explanation!.trim().isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              resultItem.explanation!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
+            ),
+          ],
         ],
       ),
     );

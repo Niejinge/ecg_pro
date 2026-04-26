@@ -53,7 +53,50 @@ void main() {
 
     expect(find.text('已登录学习模式'), findsOneWidget);
     expect(find.text('学习用户'), findsOneWidget);
+    expect(find.text('继续学习'), findsWidgets);
+    expect(find.text('复习案例'), findsOneWidget);
     expect(find.text('错题数'), findsOneWidget);
+  });
+
+  testWidgets('signed in user can submit quiz and open result page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+        initialSession: const UserSession(
+          accessToken: 'demo-token',
+          expiresIn: 7200,
+          user: AuthUser(
+            id: 'user-1',
+            username: 'learner',
+            displayName: '学习用户',
+            isActive: true,
+            isSuperuser: false,
+            roleCodes: ['learner'],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final enterCase = find.text('进入案例');
+    await tester.ensureVisible(enterCase);
+    await tester.tap(enterCase);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('开始测验 (1 题)'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('A. 房颤'));
+    await tester.pump();
+    await tester.tap(find.text('提交测验'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('测验结果'), findsOneWidget);
+    expect(find.text('逐题解析'), findsOneWidget);
+    expect(find.text('回答正确'), findsOneWidget);
   });
 }
 
