@@ -192,6 +192,53 @@ class EcgApiClient {
     return AdminCaseListResponse.fromJson(response);
   }
 
+  Future<List<CategoryItem>> fetchPublicCategories() async {
+    final response = await _sendListRequest('GET', '/api/v1/public/categories');
+    return response
+        .map((item) => CategoryItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PublicCaseListResponse> fetchPublicCases({
+    String? keyword,
+    String? categoryId,
+    String? tagId,
+    DifficultyLevel? difficulty,
+    RiskLevel? riskLevel,
+    bool? isFeatured,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final featuredQuery = isFeatured == null
+        ? null
+        : <String, dynamic>{'is_featured': isFeatured};
+    final response = await _sendJsonRequest(
+      'GET',
+      '/api/v1/public/cases',
+      queryParameters: {
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+        if (categoryId != null && categoryId.isNotEmpty)
+          'category_id': categoryId,
+        if (tagId != null && tagId.isNotEmpty) 'tag_id': tagId,
+        if (difficulty != null) 'difficulty': difficultyLevelToJson(difficulty),
+        if (riskLevel != null) 'risk_level': riskLevelToJson(riskLevel),
+        ...?featuredQuery,
+        'page': page,
+        'page_size': pageSize,
+      },
+    );
+    return PublicCaseListResponse.fromJson(response);
+  }
+
+  Future<CaseDetailItem> fetchPublicCaseDetail(String caseId) async {
+    final response = await _sendJsonRequest(
+      'GET',
+      '/api/v1/public/cases/$caseId',
+    );
+    return CaseDetailItem.fromJson(response);
+  }
+
   Future<CaseDetailItem> createCase(
     String authToken,
     AdminCaseUpsertInput input,

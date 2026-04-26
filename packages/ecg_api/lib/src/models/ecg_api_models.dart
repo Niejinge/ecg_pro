@@ -422,6 +422,78 @@ class AdminCaseListResponse {
   }
 }
 
+class PublicCaseListItem {
+  const PublicCaseListItem({
+    required this.id,
+    required this.caseCode,
+    required this.title,
+    required this.diagnosis,
+    required this.difficulty,
+    required this.riskLevel,
+    required this.categoryName,
+  });
+
+  final String id;
+  final String caseCode;
+  final String title;
+  final String diagnosis;
+  final DifficultyLevel difficulty;
+  final RiskLevel riskLevel;
+  final String? categoryName;
+
+  factory PublicCaseListItem.fromJson(Map<String, dynamic> json) {
+    return PublicCaseListItem(
+      id: json['id'] as String,
+      caseCode: json['case_code'] as String,
+      title: json['title'] as String,
+      diagnosis: json['diagnosis'] as String,
+      difficulty: _difficultyLevelFromJson(json['difficulty'] as String),
+      riskLevel: _riskLevelFromJson(json['risk_level'] as String),
+      categoryName: json['category_name'] as String?,
+    );
+  }
+
+  EcgCaseSummary toSummary() {
+    return EcgCaseSummary(
+      id: id,
+      title: title,
+      diagnosis: diagnosis,
+      difficulty: difficulty,
+      riskLevel: riskLevel,
+    );
+  }
+}
+
+class PublicCaseListResponse {
+  const PublicCaseListResponse({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+    required this.hasNext,
+  });
+
+  final List<PublicCaseListItem> items;
+  final int total;
+  final int page;
+  final int pageSize;
+  final bool hasNext;
+
+  factory PublicCaseListResponse.fromJson(Map<String, dynamic> json) {
+    return PublicCaseListResponse(
+      items: (json['items'] as List<dynamic>)
+          .map(
+            (item) => PublicCaseListItem.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+      total: json['total'] as int,
+      page: json['page'] as int,
+      pageSize: json['page_size'] as int,
+      hasNext: json['has_next'] as bool,
+    );
+  }
+}
+
 class CaseDetailItem {
   const CaseDetailItem({
     required this.id,
