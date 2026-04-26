@@ -8,10 +8,83 @@ void runUserApp() {
   runApp(const UserApp());
 }
 
-class UserApp extends StatelessWidget {
-  const UserApp({super.key, this.repository});
+class UserApp extends StatefulWidget {
+  const UserApp({
+    super.key,
+    this.repository,
+    this.sessionStore,
+    this.initialSession,
+  });
 
   final UserRepository? repository;
+  final UserSessionStore? sessionStore;
+  final UserSession? initialSession;
+
+  @override
+  State<UserApp> createState() => _UserAppState();
+}
+
+class _UserAppState extends State<UserApp> {
+  late final UserRepository _repository =
+      widget.repository ??
+      ApiUserRepository(
+        EcgApiClient(
+          baseUrl: const String.fromEnvironment(
+            'ECG_API_BASE_URL',
+            defaultValue: 'http://localhost:8000',
+          ),
+        ),
+      );
+  late final UserSessionStore _sessionStore =
+      widget.sessionStore ?? SharedPreferencesUserSessionStore();
+
+  UserSession? _session;
+  bool _restoringSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    if (widget.initialSession != null) {
+      setState(() {
+        _session = widget.initialSession;
+        _restoringSession = false;
+      });
+      return;
+    }
+
+    final restored = await _sessionStore.read();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = restored;
+      _restoringSession = false;
+    });
+  }
+
+  Future<void> _handleLogin(UserSession session) async {
+    await _sessionStore.write(session);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = session;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    await _sessionStore.clear();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,26 +92,51 @@ class UserApp extends StatelessWidget {
       title: 'ECG Pro User',
       debugShowCheckedModeBanner: false,
       theme: EcgAppTheme.light(),
-      home: UserHomePage(
-        repository:
-            repository ??
-            ApiUserRepository(
-              EcgApiClient(
-                baseUrl: const String.fromEnvironment(
-                  'ECG_API_BASE_URL',
-                  defaultValue: 'http://localhost:8000',
-                ),
-              ),
+      home: _restoringSession
+          ? const _UserBootPage()
+          : UserHomePage(
+              repository: _repository,
+              session: _session,
+              onLogin: _handleLogin,
+              onLogout: _handleLogout,
             ),
+    );
+  }
+}
+
+class _UserBootPage extends StatelessWidget {
+  const _UserBootPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: AppSpacing.lg),
+            Text('正在恢复学习会话...'),
+          ],
+        ),
       ),
     );
   }
 }
 
 class UserHomePage extends StatefulWidget {
-  const UserHomePage({super.key, required this.repository});
+  const UserHomePage({
+    super.key,
+    required this.repository,
+    required this.session,
+    required this.onLogin,
+    required this.onLogout,
+  });
 
   final UserRepository repository;
+  final UserSession? session;
+  final ValueChanged<UserSession> onLogin;
+  final Future<void> Function() onLogout;
 
   @override
   State<UserHomePage> createState() => _UserHomePageState();
@@ -49,6 +147,9 @@ class _UserHomePageState extends State<UserHomePage> {
 
   List<CategoryItem> _categories = const [];
   PublicCaseListResponse? _caseResponse;
+  List<LearningProgressItem> _progressItems = const [];
+  List<FavoriteItem> _favorites = const [];
+  List<WrongQuestionItem> _wrongQuestions = const [];
   String? _selectedCategoryId;
   String? _errorMessage;
   bool _loading = true;
@@ -57,6 +158,14 @@ class _UserHomePageState extends State<UserHomePage> {
   void initState() {
     super.initState();
     _loadInitialData();
+  }
+
+  @override
+  void didUpdateWidget(covariant UserHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session?.accessToken != widget.session?.accessToken) {
+      _loadInitialData();
+    }
   }
 
   @override
@@ -78,12 +187,27 @@ class _UserHomePageState extends State<UserHomePage> {
         categoryId: _selectedCategoryId,
         isFeatured: true,
       );
+      List<LearningProgressItem> progress = const [];
+      List<FavoriteItem> favorites = const [];
+      List<WrongQuestionItem> wrongQuestions = const [];
+      if (widget.session != null) {
+        progress = await widget.repository.fetchLearningProgress(
+          widget.session!,
+        );
+        favorites = await widget.repository.fetchFavorites(widget.session!);
+        wrongQuestions = await widget.repository.fetchWrongQuestions(
+          widget.session!,
+        );
+      }
       if (!mounted) {
         return;
       }
       setState(() {
         _categories = categories;
         _caseResponse = cases;
+        _progressItems = progress;
+        _favorites = favorites;
+        _wrongQuestions = wrongQuestions;
       });
     } on EcgApiException catch (error) {
       if (!mounted) {
@@ -108,53 +232,33 @@ class _UserHomePageState extends State<UserHomePage> {
     }
   }
 
-  Future<void> _openCaseDetail(String caseId) async {
-    showDialog<void>(
+  Future<void> _openLoginDialog() async {
+    final session = await showDialog<UserSession>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => FutureBuilder<CaseDetailItem>(
-        future: widget.repository.fetchCaseDetail(caseId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Dialog(
-              child: Padding(
-                padding: EdgeInsets.all(AppSpacing.xl),
-                child: SizedBox(
-                  width: 420,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: AppSpacing.lg),
-                      Text('正在加载案例详情...'),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
+      builder: (context) => _UserLoginDialog(repository: widget.repository),
+    );
+    if (session == null) {
+      return;
+    }
+    widget.onLogin(session);
+  }
 
-          if (snapshot.hasError || !snapshot.hasData) {
-            return AlertDialog(
-              title: const Text('详情加载失败'),
-              content: const Text('请稍后重试。'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
-                ),
-              ],
-            );
-          }
-
-          return _CaseDetailDialog(detail: snapshot.data!);
-        },
+  Future<void> _openCaseDetail(String caseId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CaseDetailPage(
+          repository: widget.repository,
+          session: widget.session,
+          caseId: caseId,
+        ),
       ),
     );
+    await _loadInitialData();
   }
 
   @override
   Widget build(BuildContext context) {
+    final session = widget.session;
     return EcgScaffold(
       title: 'ECG Pro 学习端',
       subtitle: '围绕真实心电图案例进行系统学习，先看图，再判断，再回顾诊断与临床处理。',
@@ -164,11 +268,33 @@ class _UserHomePageState extends State<UserHomePage> {
           onPressed: _loading ? null : _loadInitialData,
           icon: const Icon(Icons.refresh_rounded),
         ),
+        if (session == null)
+          FilledButton.tonalIcon(
+            onPressed: _openLoginDialog,
+            icon: const Icon(Icons.person_rounded),
+            label: const Text('登录学习'),
+          )
+        else ...[
+          Chip(
+            avatar: const Icon(Icons.verified_user_rounded, size: 18),
+            label: Text(session.user.displayName),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          TextButton(onPressed: widget.onLogout, child: const Text('退出')),
+        ],
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _LearningHero(),
+          _LearningHero(session: session),
+          const SizedBox(height: AppSpacing.xl),
+          _LearningOverviewSection(
+            session: session,
+            progressItems: _progressItems,
+            favorites: _favorites,
+            wrongQuestions: _wrongQuestions,
+            onLoginPressed: _openLoginDialog,
+          ),
           const SizedBox(height: AppSpacing.xl),
           EcgSectionCard(
             title: '案例筛选',
@@ -265,20 +391,7 @@ class _UserHomePageState extends State<UserHomePage> {
     }
 
     if (_errorMessage != null) {
-      return Container(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        decoration: BoxDecoration(
-          color: AppColors.brandSoft,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.info_outline_rounded, color: AppColors.brand),
-            const SizedBox(width: AppSpacing.lg),
-            Expanded(child: Text(_errorMessage!)),
-          ],
-        ),
-      );
+      return _InlineMessage(message: _errorMessage!);
     }
 
     final items = _caseResponse?.items ?? const <PublicCaseListItem>[];
@@ -293,6 +406,9 @@ class _UserHomePageState extends State<UserHomePage> {
               padding: const EdgeInsets.only(bottom: AppSpacing.lg),
               child: _CaseSummaryCard(
                 item: item,
+                isFavorite: _favorites.any(
+                  (favorite) => favorite.caseId == item.id,
+                ),
                 onTap: () => _openCaseDetail(item.id),
               ),
             ),
@@ -302,8 +418,576 @@ class _UserHomePageState extends State<UserHomePage> {
   }
 }
 
+class CaseDetailPage extends StatefulWidget {
+  const CaseDetailPage({
+    super.key,
+    required this.repository,
+    required this.session,
+    required this.caseId,
+  });
+
+  final UserRepository repository;
+  final UserSession? session;
+  final String caseId;
+
+  @override
+  State<CaseDetailPage> createState() => _CaseDetailPageState();
+}
+
+class _CaseDetailPageState extends State<CaseDetailPage> {
+  CaseDetailItem? _detail;
+  List<PublicQuizQuestionItem> _quizQuestions = const [];
+  bool _isFavorite = false;
+  bool _loading = true;
+  bool _favoriteLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final detail = await widget.repository.fetchCaseDetail(widget.caseId);
+      final quizQuestions = await widget.repository.fetchQuizQuestions(
+        widget.caseId,
+      );
+      var isFavorite = false;
+      if (widget.session != null) {
+        await widget.repository.markCaseViewed(widget.session!, widget.caseId);
+        final favorites = await widget.repository.fetchFavorites(
+          widget.session!,
+        );
+        isFavorite = favorites.any(
+          (favorite) => favorite.caseId == widget.caseId,
+        );
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _detail = detail;
+        _quizQuestions = quizQuestions;
+        _isFavorite = isFavorite;
+      });
+    } on EcgApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorMessage = '案例详情加载失败，请稍后重试。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final session = widget.session;
+    if (session == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录后可收藏案例并同步学习记录。')));
+      return;
+    }
+
+    setState(() {
+      _favoriteLoading = true;
+    });
+
+    try {
+      if (_isFavorite) {
+        await widget.repository.removeFavorite(session, widget.caseId);
+      } else {
+        await widget.repository.addFavorite(session, widget.caseId);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isFavorite = !_isFavorite;
+      });
+    } on EcgApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _favoriteLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _startQuiz() async {
+    final detail = _detail;
+    if (detail == null) {
+      return;
+    }
+    if (widget.session == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录后可提交测验并记录成绩。')));
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => QuizPage(
+          repository: widget.repository,
+          session: widget.session!,
+          detail: detail,
+          questions: _quizQuestions,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('案例详情'),
+        actions: [
+          IconButton(
+            tooltip: _isFavorite ? '取消收藏' : '收藏案例',
+            onPressed: _favoriteLoading ? null : _toggleFavorite,
+            icon: Icon(
+              _isFavorite
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: _loading
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 120),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : _errorMessage != null
+                ? _InlineMessage(message: _errorMessage!)
+                : _buildContent(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    final detail = _detail!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  _Badge(
+                    text: detail.category?.name ?? '未分类',
+                    color: AppColors.brand,
+                  ),
+                  _Badge(
+                    text: _difficultyLabel(detail.difficulty),
+                    color: AppColors.accent,
+                  ),
+                  _Badge(
+                    text: _riskLabel(detail.riskLevel),
+                    color: _riskColor(detail.riskLevel),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                detail.title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                detail.diagnosis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              if (detail.summary != null && detail.summary!.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  detail.summary!,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.55,
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.xl),
+              Wrap(
+                spacing: AppSpacing.lg,
+                runSpacing: AppSpacing.lg,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _quizQuestions.isEmpty ? null : _startQuiz,
+                    icon: const Icon(Icons.quiz_rounded),
+                    label: Text(
+                      _quizQuestions.isEmpty
+                          ? '暂无测验'
+                          : '开始测验 (${_quizQuestions.length} 题)',
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _toggleFavorite,
+                    icon: Icon(
+                      _isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                    ),
+                    label: Text(_isFavorite ? '已收藏' : '收藏案例'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        if (detail.images.isNotEmpty) ...[
+          _ImageStrip(images: detail.images),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+        _DetailGrid(detail: detail),
+        if (detail.detailedDescription != null &&
+            detail.detailedDescription!.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _DetailBlock(title: '详细描述', content: detail.detailedDescription!),
+        ],
+        if (detail.treatmentPlan != null &&
+            detail.treatmentPlan!.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _DetailBlock(title: '治疗方案', content: detail.treatmentPlan!),
+        ],
+        if (detail.learningPoints.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _BulletBlock(title: '学习要点', items: detail.learningPoints),
+        ],
+        if (detail.interpretationSteps.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _BulletBlock(title: '判读步骤', items: detail.interpretationSteps),
+        ],
+        if (detail.memoryTips.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _BulletBlock(title: '记忆提示', items: detail.memoryTips),
+        ],
+      ],
+    );
+  }
+}
+
+class QuizPage extends StatefulWidget {
+  const QuizPage({
+    super.key,
+    required this.repository,
+    required this.session,
+    required this.detail,
+    required this.questions,
+  });
+
+  final UserRepository repository;
+  final UserSession session;
+  final CaseDetailItem detail;
+  final List<PublicQuizQuestionItem> questions;
+
+  @override
+  State<QuizPage> createState() => _QuizPageState();
+}
+
+class _QuizPageState extends State<QuizPage> {
+  final Map<String, Set<String>> _selectedAnswers = {};
+  bool _submitting = false;
+
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+    });
+    try {
+      final result = await widget.repository.submitQuiz(
+        widget.session,
+        QuizSubmissionInput(
+          caseId: widget.detail.id,
+          answers: widget.questions
+              .map(
+                (question) => QuizAnswerSubmissionInput(
+                  questionId: question.id,
+                  selectedOptionIds:
+                      _selectedAnswers[question.id]?.toList() ?? const [],
+                ),
+              )
+              .toList(),
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('测验完成'),
+          content: Text(
+            '本次得分 ${result.score} 分，答对 ${result.correctCount}/${result.totalQuestions} 题。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+    } on EcgApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  void _toggleOption(
+    PublicQuizQuestionItem question,
+    PublicQuizOptionItem option,
+    bool selected,
+  ) {
+    final current = {...?_selectedAnswers[question.id]};
+    if (question.questionType == QuestionType.multipleChoice) {
+      if (selected) {
+        current.add(option.id);
+      } else {
+        current.remove(option.id);
+      }
+    } else {
+      current
+        ..clear()
+        ..add(option.id);
+    }
+    setState(() {
+      _selectedAnswers[question.id] = current;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('案例测验')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          children: [
+            Text(
+              widget.detail.title,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '共 ${widget.questions.length} 题，提交后将记录本次成绩与错题。',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            for (final question in widget.questions) ...[
+              _QuizQuestionCard(
+                question: question,
+                selectedOptionIds: _selectedAnswers[question.id] ?? const {},
+                onOptionChanged: (option, selected) =>
+                    _toggleOption(question, option, selected),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+            FilledButton.icon(
+              onPressed: _submitting ? null : _submit,
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check_circle_rounded),
+              label: Text(_submitting ? '提交中...' : '提交测验'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserLoginDialog extends StatefulWidget {
+  const _UserLoginDialog({required this.repository});
+
+  final UserRepository repository;
+
+  @override
+  State<_UserLoginDialog> createState() => _UserLoginDialogState();
+}
+
+class _UserLoginDialogState extends State<_UserLoginDialog> {
+  final _usernameController = TextEditingController(text: 'admin');
+  final _passwordController = TextEditingController(text: 'Admin123456');
+  final _formKey = GlobalKey<FormState>();
+  bool _submitting = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+    try {
+      final session = await widget.repository.login(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(session);
+    } on EcgApiException catch (error) {
+      setState(() {
+        _errorMessage = error.message;
+      });
+    } catch (_) {
+      setState(() {
+        _errorMessage = '登录失败，请检查账号和接口服务。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('登录学习账户'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(labelText: '用户名'),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '请输入用户名';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(labelText: '密码'),
+                obscureText: true,
+                validator: (value) {
+                  if (value == null || value.length < 6) {
+                    return '密码至少 6 位';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (_) => _submit(),
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: AppColors.danger),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: Text(_submitting ? '登录中...' : '登录'),
+        ),
+      ],
+    );
+  }
+}
+
 class _LearningHero extends StatelessWidget {
-  const _LearningHero();
+  const _LearningHero({required this.session});
+
+  final UserSession? session;
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +1024,7 @@ class _LearningHero extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: AppColors.border),
                   ),
-                  child: const Text('清晰、轻量、适合持续学习'),
+                  child: Text(session == null ? '游客模式可浏览' : '已登录学习模式'),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Text(
@@ -351,7 +1035,7 @@ class _LearningHero extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Text(
-                  '每个案例都整理了图像、诊断、关键导联、临床意义、风险等级、处理建议和记忆提示，适合从入门到进阶反复练习。',
+                  '每个案例都整理了图像、诊断、关键导联、临床意义、风险等级、处理建议和记忆提示，登录后还能同步学习进度、收藏和测验成绩。',
                   style: textTheme.bodyLarge?.copyWith(
                     color: AppColors.textSecondary,
                     height: 1.5,
@@ -360,26 +1044,113 @@ class _LearningHero extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 280, child: _HeroStats()),
+          SizedBox(
+            width: 300,
+            child: Column(
+              children: const [
+                _StatTile(title: '学习路径', value: '看图 -> 判读 -> 测验'),
+                SizedBox(height: AppSpacing.lg),
+                _StatTile(title: '案例结构', value: '图像 + 诊断 + 临床建议'),
+                SizedBox(height: AppSpacing.lg),
+                _StatTile(title: '终端支持', value: 'Web 与 Android 同步体验'),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _HeroStats extends StatelessWidget {
-  const _HeroStats();
+class _LearningOverviewSection extends StatelessWidget {
+  const _LearningOverviewSection({
+    required this.session,
+    required this.progressItems,
+    required this.favorites,
+    required this.wrongQuestions,
+    required this.onLoginPressed,
+  });
+
+  final UserSession? session;
+  final List<LearningProgressItem> progressItems;
+  final List<FavoriteItem> favorites;
+  final List<WrongQuestionItem> wrongQuestions;
+  final VoidCallback onLoginPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: const [
-        _StatTile(title: '学习路径', value: '先识别节律，再看风险与处理'),
-        SizedBox(height: AppSpacing.lg),
-        _StatTile(title: '案例结构', value: '图像 + 诊断 + 临床建议'),
-        SizedBox(height: AppSpacing.lg),
-        _StatTile(title: '适用终端', value: 'Web 与 Android 同步体验'),
-      ],
+    if (session == null) {
+      return EcgSectionCard(
+        title: '学习进度',
+        subtitle: '登录后可记录浏览、收藏、错题和测验成绩。',
+        trailing: FilledButton.tonal(
+          onPressed: onLoginPressed,
+          child: const Text('登录学习'),
+        ),
+        child: const Text('当前处于游客模式，你可以先浏览案例，准备好后再登录开始记录进度。'),
+      );
+    }
+
+    final completedCount = progressItems
+        .where((item) => item.status == LearningStatus.completed)
+        .length;
+    final bestScore = progressItems.isEmpty
+        ? 0
+        : progressItems
+              .map((item) => item.bestScore)
+              .reduce((value, element) => value > element ? value : element);
+
+    return EcgSectionCard(
+      title: '学习进度',
+      subtitle: '已同步你的学习记录，可继续回顾已看案例并针对错题复习。',
+      child: Wrap(
+        spacing: AppSpacing.lg,
+        runSpacing: AppSpacing.lg,
+        children: [
+          _MetricCard(label: '已开始案例', value: '${progressItems.length}'),
+          _MetricCard(label: '已完成案例', value: '$completedCount'),
+          _MetricCard(label: '已收藏', value: '${favorites.length}'),
+          _MetricCard(label: '错题数', value: '${wrongQuestions.length}'),
+          _MetricCard(label: '最佳成绩', value: '$bestScore'),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 180,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -423,9 +1194,14 @@ class _StatTile extends StatelessWidget {
 }
 
 class _CaseSummaryCard extends StatelessWidget {
-  const _CaseSummaryCard({required this.item, required this.onTap});
+  const _CaseSummaryCard({
+    required this.item,
+    required this.isFavorite,
+    required this.onTap,
+  });
 
   final PublicCaseListItem item;
+  final bool isFavorite;
   final VoidCallback onTap;
 
   @override
@@ -459,6 +1235,8 @@ class _CaseSummaryCard extends StatelessWidget {
                   text: _riskLabel(item.riskLevel),
                   color: _riskColor(item.riskLevel),
                 ),
+                if (isFavorite)
+                  const _Badge(text: '已收藏', color: AppColors.danger),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -485,13 +1263,93 @@ class _CaseSummaryCard extends StatelessWidget {
                   ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                 ),
                 const Spacer(),
-                const Text('查看详情'),
+                const Text('进入案例'),
                 const SizedBox(width: AppSpacing.sm),
                 const Icon(Icons.arrow_forward_rounded, size: 18),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _QuizQuestionCard extends StatelessWidget {
+  const _QuizQuestionCard({
+    required this.question,
+    required this.selectedOptionIds,
+    required this.onOptionChanged,
+  });
+
+  final PublicQuizQuestionItem question;
+  final Set<String> selectedOptionIds;
+  final void Function(PublicQuizOptionItem option, bool selected)
+  onOptionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '第 ${question.sortOrder + 1} 题',
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            question.stem,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          for (final option in question.options)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: CheckboxListTile(
+                value: selectedOptionIds.contains(option.id),
+                onChanged: (selected) =>
+                    onOptionChanged(option, selected ?? false),
+                title: Text('${option.label}. ${option.content}'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineMessage extends StatelessWidget {
+  const _InlineMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.brandSoft,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, color: AppColors.brand),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(child: Text(message)),
+        ],
       ),
     );
   }
@@ -519,127 +1377,6 @@ class _Badge extends StatelessWidget {
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
           color: color,
           fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _CaseDetailDialog extends StatelessWidget {
-  const _CaseDetailDialog({required this.detail});
-
-  final CaseDetailItem detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(AppSpacing.xl),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920, maxHeight: 760),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          detail.title,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          detail.diagnosis,
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Expanded(
-                child: ListView(
-                  children: [
-                    Wrap(
-                      spacing: AppSpacing.sm,
-                      runSpacing: AppSpacing.sm,
-                      children: [
-                        _Badge(
-                          text: detail.category?.name ?? '未分类',
-                          color: AppColors.brand,
-                        ),
-                        _Badge(
-                          text: _difficultyLabel(detail.difficulty),
-                          color: AppColors.accent,
-                        ),
-                        _Badge(
-                          text: _riskLabel(detail.riskLevel),
-                          color: _riskColor(detail.riskLevel),
-                        ),
-                      ],
-                    ),
-                    if (detail.summary != null &&
-                        detail.summary!.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _DetailBlock(title: '案例概览', content: detail.summary!),
-                    ],
-                    if (detail.images.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _ImageStrip(images: detail.images),
-                    ],
-                    const SizedBox(height: AppSpacing.xl),
-                    _DetailGrid(detail: detail),
-                    if (detail.detailedDescription != null &&
-                        detail.detailedDescription!.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _DetailBlock(
-                        title: '详细描述',
-                        content: detail.detailedDescription!,
-                      ),
-                    ],
-                    if (detail.treatmentPlan != null &&
-                        detail.treatmentPlan!.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _DetailBlock(
-                        title: '治疗方案',
-                        content: detail.treatmentPlan!,
-                      ),
-                    ],
-                    if (detail.learningPoints.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _BulletBlock(title: '学习要点', items: detail.learningPoints),
-                    ],
-                    if (detail.interpretationSteps.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _BulletBlock(
-                        title: '判读步骤',
-                        items: detail.interpretationSteps,
-                      ),
-                    ],
-                    if (detail.memoryTips.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _BulletBlock(title: '记忆提示', items: detail.memoryTips),
-                    ],
-                    if (detail.commonMistakes.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      _BulletBlock(title: '常见误区', items: detail.commonMistakes),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

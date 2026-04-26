@@ -52,6 +52,18 @@ QuestionType _questionTypeFromJson(String value) {
   throw ArgumentError.value(value, 'value', 'Unsupported question type.');
 }
 
+LearningStatus _learningStatusFromJson(String value) {
+  switch (value) {
+    case 'not_started':
+      return LearningStatus.notStarted;
+    case 'in_progress':
+      return LearningStatus.inProgress;
+    case 'completed':
+      return LearningStatus.completed;
+  }
+  throw ArgumentError.value(value, 'value', 'Unsupported learning status.');
+}
+
 String difficultyLevelToJson(DifficultyLevel value) {
   switch (value) {
     case DifficultyLevel.beginner:
@@ -97,6 +109,19 @@ String questionTypeToJson(QuestionType value) {
       return 'true_false';
     case QuestionType.imageRecognition:
       return 'image_recognition';
+  }
+}
+
+String attemptModeToJson(AttemptMode value) {
+  switch (value) {
+    case AttemptMode.caseQuiz:
+      return 'case_quiz';
+    case AttemptMode.categoryQuiz:
+      return 'category_quiz';
+    case AttemptMode.randomPractice:
+      return 'random_practice';
+    case AttemptMode.wrongQuestionRetry:
+      return 'wrong_question_retry';
   }
 }
 
@@ -490,6 +515,254 @@ class PublicCaseListResponse {
       page: json['page'] as int,
       pageSize: json['page_size'] as int,
       hasNext: json['has_next'] as bool,
+    );
+  }
+}
+
+class PublicQuizOptionItem {
+  const PublicQuizOptionItem({
+    required this.id,
+    required this.label,
+    required this.content,
+    required this.sortOrder,
+  });
+
+  final String id;
+  final String label;
+  final String content;
+  final int sortOrder;
+
+  factory PublicQuizOptionItem.fromJson(Map<String, dynamic> json) {
+    return PublicQuizOptionItem(
+      id: json['id'] as String,
+      label: json['label'] as String,
+      content: json['content'] as String,
+      sortOrder: json['sort_order'] as int,
+    );
+  }
+}
+
+class PublicQuizQuestionItem {
+  const PublicQuizQuestionItem({
+    required this.id,
+    required this.stem,
+    required this.questionType,
+    required this.difficulty,
+    required this.sortOrder,
+    required this.options,
+  });
+
+  final String id;
+  final String stem;
+  final QuestionType questionType;
+  final DifficultyLevel difficulty;
+  final int sortOrder;
+  final List<PublicQuizOptionItem> options;
+
+  factory PublicQuizQuestionItem.fromJson(Map<String, dynamic> json) {
+    return PublicQuizQuestionItem(
+      id: json['id'] as String,
+      stem: json['stem'] as String,
+      questionType: _questionTypeFromJson(json['question_type'] as String),
+      difficulty: _difficultyLevelFromJson(json['difficulty'] as String),
+      sortOrder: json['sort_order'] as int,
+      options: (json['options'] as List<dynamic>)
+          .map(
+            (item) =>
+                PublicQuizOptionItem.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+}
+
+class QuizAnswerSubmissionInput {
+  const QuizAnswerSubmissionInput({
+    required this.questionId,
+    required this.selectedOptionIds,
+  });
+
+  final String questionId;
+  final List<String> selectedOptionIds;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'question_id': questionId,
+      'selected_option_ids': selectedOptionIds,
+    };
+  }
+}
+
+class QuizSubmissionInput {
+  const QuizSubmissionInput({
+    required this.caseId,
+    this.mode = AttemptMode.caseQuiz,
+    required this.answers,
+  });
+
+  final String caseId;
+  final AttemptMode mode;
+  final List<QuizAnswerSubmissionInput> answers;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'case_id': caseId,
+      'mode': attemptModeToJson(mode),
+      'answers': answers.map((item) => item.toJson()).toList(),
+    };
+  }
+}
+
+class QuizSubmissionResultItem {
+  const QuizSubmissionResultItem({
+    required this.questionId,
+    required this.selectedOptionIds,
+    required this.correctOptionIds,
+    required this.isCorrect,
+    required this.explanation,
+  });
+
+  final String questionId;
+  final List<String> selectedOptionIds;
+  final List<String> correctOptionIds;
+  final bool isCorrect;
+  final String? explanation;
+
+  factory QuizSubmissionResultItem.fromJson(Map<String, dynamic> json) {
+    return QuizSubmissionResultItem(
+      questionId: json['question_id'] as String,
+      selectedOptionIds: List<String>.from(
+        json['selected_option_ids'] as List<dynamic>,
+      ),
+      correctOptionIds: List<String>.from(
+        json['correct_option_ids'] as List<dynamic>,
+      ),
+      isCorrect: json['is_correct'] as bool,
+      explanation: json['explanation'] as String?,
+    );
+  }
+}
+
+class QuizSubmissionResponse {
+  const QuizSubmissionResponse({
+    required this.attemptId,
+    required this.caseId,
+    required this.score,
+    required this.totalQuestions,
+    required this.correctCount,
+    required this.items,
+  });
+
+  final String attemptId;
+  final String caseId;
+  final int score;
+  final int totalQuestions;
+  final int correctCount;
+  final List<QuizSubmissionResultItem> items;
+
+  factory QuizSubmissionResponse.fromJson(Map<String, dynamic> json) {
+    return QuizSubmissionResponse(
+      attemptId: json['attempt_id'] as String,
+      caseId: json['case_id'] as String,
+      score: json['score'] as int,
+      totalQuestions: json['total_questions'] as int,
+      correctCount: json['correct_count'] as int,
+      items: (json['items'] as List<dynamic>)
+          .map(
+            (item) =>
+                QuizSubmissionResultItem.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+}
+
+class LearningProgressItem {
+  const LearningProgressItem({
+    required this.caseId,
+    required this.caseCode,
+    required this.title,
+    required this.diagnosis,
+    required this.status,
+    required this.completionRate,
+    required this.bestScore,
+    required this.lastViewedAt,
+  });
+
+  final String caseId;
+  final String caseCode;
+  final String title;
+  final String diagnosis;
+  final LearningStatus status;
+  final int completionRate;
+  final int bestScore;
+  final DateTime? lastViewedAt;
+
+  factory LearningProgressItem.fromJson(Map<String, dynamic> json) {
+    return LearningProgressItem(
+      caseId: json['case_id'] as String,
+      caseCode: json['case_code'] as String,
+      title: json['title'] as String,
+      diagnosis: json['diagnosis'] as String,
+      status: _learningStatusFromJson(json['status'] as String),
+      completionRate: json['completion_rate'] as int,
+      bestScore: json['best_score'] as int,
+      lastViewedAt: _dateTimeFromJson(json['last_viewed_at']),
+    );
+  }
+}
+
+class FavoriteItem {
+  const FavoriteItem({
+    required this.caseId,
+    required this.caseCode,
+    required this.title,
+    required this.diagnosis,
+  });
+
+  final String caseId;
+  final String caseCode;
+  final String title;
+  final String diagnosis;
+
+  factory FavoriteItem.fromJson(Map<String, dynamic> json) {
+    return FavoriteItem(
+      caseId: json['case_id'] as String,
+      caseCode: json['case_code'] as String,
+      title: json['title'] as String,
+      diagnosis: json['diagnosis'] as String,
+    );
+  }
+}
+
+class WrongQuestionItem {
+  const WrongQuestionItem({
+    required this.questionId,
+    required this.caseId,
+    required this.caseCode,
+    required this.caseTitle,
+    required this.stem,
+    required this.wrongCount,
+    required this.lastWrongAt,
+  });
+
+  final String questionId;
+  final String caseId;
+  final String caseCode;
+  final String caseTitle;
+  final String stem;
+  final int wrongCount;
+  final DateTime? lastWrongAt;
+
+  factory WrongQuestionItem.fromJson(Map<String, dynamic> json) {
+    return WrongQuestionItem(
+      questionId: json['question_id'] as String,
+      caseId: json['case_id'] as String,
+      caseCode: json['case_code'] as String,
+      caseTitle: json['case_title'] as String,
+      stem: json['stem'] as String,
+      wrongCount: json['wrong_count'] as int,
+      lastWrongAt: _dateTimeFromJson(json['last_wrong_at']),
     );
   }
 }

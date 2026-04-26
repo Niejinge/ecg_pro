@@ -112,4 +112,93 @@ void main() {
     expect(response.items.single.caseCode, 'ECG-001');
     expect(response.items.single.status, CaseStatus.published);
   });
+
+  test('fetchPublicQuizQuestions parses quiz payload', () async {
+    final mockHttpClient = MockClient((request) async {
+      expect(request.url.path, '/api/v1/public/cases/case-1/quiz');
+      return http.Response(
+        jsonEncode([
+          {
+            'id': 'question-1',
+            'stem': '最可能的节律是什么？',
+            'question_type': 'single_choice',
+            'difficulty': 'beginner',
+            'sort_order': 0,
+            'options': [
+              {
+                'id': 'option-a',
+                'label': 'A',
+                'content': '房颤',
+                'sort_order': 0,
+              },
+            ],
+          },
+        ]),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final client = EcgApiClient(
+      baseUrl: 'https://api.ecgpro.local',
+      httpClient: mockHttpClient,
+    );
+
+    final response = await client.fetchPublicQuizQuestions('case-1');
+
+    expect(response.single.questionType, QuestionType.singleChoice);
+    expect(response.single.options.single.label, 'A');
+  });
+
+  test('submitQuiz sends auth token and payload', () async {
+    late Map<String, dynamic> requestBody;
+    final mockHttpClient = MockClient((request) async {
+      expect(request.headers['authorization'], 'Bearer demo-token');
+      requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'attempt_id': 'attempt-1',
+          'case_id': 'case-1',
+          'score': 100,
+          'total_questions': 1,
+          'correct_count': 1,
+          'items': [
+            {
+              'question_id': 'question-1',
+              'selected_option_ids': ['option-a'],
+              'correct_option_ids': ['option-a'],
+              'is_correct': true,
+              'explanation': '解释',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final client = EcgApiClient(
+      baseUrl: 'https://api.ecgpro.local',
+      httpClient: mockHttpClient,
+    );
+
+    final response = await client.submitQuiz(
+      'demo-token',
+      const QuizSubmissionInput(
+        caseId: 'case-1',
+        answers: [
+          QuizAnswerSubmissionInput(
+            questionId: 'question-1',
+            selectedOptionIds: ['option-a'],
+          ),
+        ],
+      ),
+    );
+
+    expect(requestBody['case_id'], 'case-1');
+    expect(
+      (requestBody['answers'] as List).single['question_id'],
+      'question-1',
+    );
+    expect(response.score, 100);
+    expect(response.items.single.isCorrect, isTrue);
+  });
 }

@@ -3,38 +3,88 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:user_app/main.dart';
 
 void main() {
-  testWidgets('user app renders public cases and opens detail', (tester) async {
-    await tester.pumpWidget(UserApp(repository: _FakeUserRepository()));
+  testWidgets('guest user can browse case list and detail page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('ECG Pro 学习端'), findsOneWidget);
     expect(find.text('示例学习案例'), findsOneWidget);
     expect(find.text('房颤与不规则心律识别'), findsOneWidget);
+    expect(find.text('游客模式可浏览'), findsOneWidget);
 
     await tester.ensureVisible(find.text('房颤与不规则心律识别'));
     await tester.tap(find.text('房颤与不规则心律识别'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 20));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 80));
 
-    expect(find.text('案例概览'), findsOneWidget);
+    expect(find.text('案例详情'), findsOneWidget);
+    expect(find.text('开始测验 (1 题)'), findsOneWidget);
+    expect(find.text('学习要点'), findsOneWidget);
   });
+
+  testWidgets('signed in user sees progress overview', (tester) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+        initialSession: const UserSession(
+          accessToken: 'demo-token',
+          expiresIn: 7200,
+          user: AuthUser(
+            id: 'user-1',
+            username: 'learner',
+            displayName: '学习用户',
+            isActive: true,
+            isSuperuser: false,
+            roleCodes: ['learner'],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.text('已登录学习模式'), findsOneWidget);
+    expect(find.text('学习用户'), findsOneWidget);
+    expect(find.text('错题数'), findsOneWidget);
+  });
+}
+
+class _MemoryUserSessionStore implements UserSessionStore {
+  _MemoryUserSessionStore();
+
+  UserSession? session;
+
+  @override
+  Future<void> clear() async {
+    session = null;
+  }
+
+  @override
+  Future<UserSession?> read() async => session;
+
+  @override
+  Future<void> write(UserSession nextSession) async {
+    session = nextSession;
+  }
 }
 
 class _FakeUserRepository implements UserRepository {
   @override
-  Future<List<CategoryItem>> fetchCategories() async {
-    return const [
-      CategoryItem(
-        id: 'category-arrhythmia',
-        name: '心律失常',
-        slug: 'arrhythmia',
-        description: '节律相关案例',
-        sortOrder: 1,
-        isVisible: true,
-        parentId: null,
-      ),
-    ];
+  Future<FavoriteItem> addFavorite(UserSession session, String caseId) async {
+    return const FavoriteItem(
+      caseId: 'case-001',
+      caseCode: 'ECG-001',
+      title: '房颤与不规则心律识别',
+      diagnosis: '房颤伴快速心室率',
+    );
   }
 
   @override
@@ -84,6 +134,21 @@ class _FakeUserRepository implements UserRepository {
   }
 
   @override
+  Future<List<CategoryItem>> fetchCategories() async {
+    return const [
+      CategoryItem(
+        id: 'category-arrhythmia',
+        name: '心律失常',
+        slug: 'arrhythmia',
+        description: '节律相关案例',
+        sortOrder: 1,
+        isVisible: true,
+        parentId: null,
+      ),
+    ];
+  }
+
+  @override
   Future<PublicCaseListResponse> fetchCases({
     String? keyword,
     String? categoryId,
@@ -109,6 +174,142 @@ class _FakeUserRepository implements UserRepository {
       page: 1,
       pageSize: 20,
       hasNext: false,
+    );
+  }
+
+  @override
+  Future<List<FavoriteItem>> fetchFavorites(UserSession session) async {
+    return const [
+      FavoriteItem(
+        caseId: 'case-001',
+        caseCode: 'ECG-001',
+        title: '房颤与不规则心律识别',
+        diagnosis: '房颤伴快速心室率',
+      ),
+    ];
+  }
+
+  @override
+  Future<List<LearningProgressItem>> fetchLearningProgress(
+    UserSession session,
+  ) async {
+    return [
+      LearningProgressItem(
+        caseId: 'case-001',
+        caseCode: 'ECG-001',
+        title: '房颤与不规则心律识别',
+        diagnosis: '房颤伴快速心室率',
+        status: LearningStatus.completed,
+        completionRate: 100,
+        bestScore: 100,
+        lastViewedAt: DateTime(2026, 4, 27),
+      ),
+    ];
+  }
+
+  @override
+  Future<List<PublicQuizQuestionItem>> fetchQuizQuestions(String caseId) async {
+    return const [
+      PublicQuizQuestionItem(
+        id: 'question-001',
+        stem: '该心电图最符合哪种节律？',
+        questionType: QuestionType.singleChoice,
+        difficulty: DifficultyLevel.beginner,
+        sortOrder: 0,
+        options: [
+          PublicQuizOptionItem(
+            id: 'option-a',
+            label: 'A',
+            content: '房颤',
+            sortOrder: 0,
+          ),
+          PublicQuizOptionItem(
+            id: 'option-b',
+            label: 'B',
+            content: '窦性心律',
+            sortOrder: 1,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Future<List<WrongQuestionItem>> fetchWrongQuestions(
+    UserSession session,
+  ) async {
+    return const [
+      WrongQuestionItem(
+        questionId: 'question-001',
+        caseId: 'case-001',
+        caseCode: 'ECG-001',
+        caseTitle: '房颤与不规则心律识别',
+        stem: '该心电图最符合哪种节律？',
+        wrongCount: 1,
+        lastWrongAt: null,
+      ),
+    ];
+  }
+
+  @override
+  Future<UserSession> login({
+    required String username,
+    required String password,
+  }) async {
+    return const UserSession(
+      accessToken: 'demo-token',
+      expiresIn: 7200,
+      user: AuthUser(
+        id: 'user-1',
+        username: 'learner',
+        displayName: '学习用户',
+        isActive: true,
+        isSuperuser: false,
+        roleCodes: ['learner'],
+      ),
+    );
+  }
+
+  @override
+  Future<LearningProgressItem> markCaseViewed(
+    UserSession session,
+    String caseId,
+  ) async {
+    return LearningProgressItem(
+      caseId: caseId,
+      caseCode: 'ECG-001',
+      title: '房颤与不规则心律识别',
+      diagnosis: '房颤伴快速心室率',
+      status: LearningStatus.inProgress,
+      completionRate: 50,
+      bestScore: 80,
+      lastViewedAt: DateTime(2026, 4, 27),
+    );
+  }
+
+  @override
+  Future<void> removeFavorite(UserSession session, String caseId) async {}
+
+  @override
+  Future<QuizSubmissionResponse> submitQuiz(
+    UserSession session,
+    QuizSubmissionInput input,
+  ) async {
+    return const QuizSubmissionResponse(
+      attemptId: 'attempt-001',
+      caseId: 'case-001',
+      score: 100,
+      totalQuestions: 1,
+      correctCount: 1,
+      items: [
+        QuizSubmissionResultItem(
+          questionId: 'question-001',
+          selectedOptionIds: ['option-a'],
+          correctOptionIds: ['option-a'],
+          isCorrect: true,
+          explanation: '房颤的 RR 间期绝对不规则。',
+        ),
+      ],
     );
   }
 }

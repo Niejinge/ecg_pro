@@ -239,6 +239,100 @@ class EcgApiClient {
     return CaseDetailItem.fromJson(response);
   }
 
+  Future<List<PublicQuizQuestionItem>> fetchPublicQuizQuestions(
+    String caseId,
+  ) async {
+    final response = await _sendListRequest(
+      'GET',
+      '/api/v1/public/cases/$caseId/quiz',
+    );
+    return response
+        .map(
+          (item) =>
+              PublicQuizQuestionItem.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<List<LearningProgressItem>> fetchLearningProgress(
+    String authToken,
+  ) async {
+    final response = await _sendListRequest(
+      'GET',
+      '/api/v1/user/learning/progress',
+      authToken: authToken,
+    );
+    return response
+        .map(
+          (item) => LearningProgressItem.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<LearningProgressItem> markCaseViewed(
+    String authToken,
+    String caseId,
+  ) async {
+    final response = await _sendJsonRequest(
+      'POST',
+      '/api/v1/user/learning/cases/$caseId/view',
+      authToken: authToken,
+    );
+    return LearningProgressItem.fromJson(response);
+  }
+
+  Future<List<FavoriteItem>> fetchFavorites(String authToken) async {
+    final response = await _sendListRequest(
+      'GET',
+      '/api/v1/user/favorites',
+      authToken: authToken,
+    );
+    return response
+        .map((item) => FavoriteItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<FavoriteItem> addFavorite(String authToken, String caseId) async {
+    final response = await _sendJsonRequest(
+      'POST',
+      '/api/v1/user/favorites/$caseId',
+      authToken: authToken,
+    );
+    return FavoriteItem.fromJson(response);
+  }
+
+  Future<void> removeFavorite(String authToken, String caseId) async {
+    await _sendWithoutContent(
+      'DELETE',
+      '/api/v1/user/favorites/$caseId',
+      authToken: authToken,
+    );
+  }
+
+  Future<List<WrongQuestionItem>> fetchWrongQuestions(String authToken) async {
+    final response = await _sendListRequest(
+      'GET',
+      '/api/v1/user/wrong-questions',
+      authToken: authToken,
+    );
+    return response
+        .map((item) => WrongQuestionItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<QuizSubmissionResponse> submitQuiz(
+    String authToken,
+    QuizSubmissionInput input,
+  ) async {
+    final response = await _sendJsonRequest(
+      'POST',
+      '/api/v1/user/quiz/submit',
+      authToken: authToken,
+      body: input.toJson(),
+    );
+    return QuizSubmissionResponse.fromJson(response);
+  }
+
   Future<CaseDetailItem> createCase(
     String authToken,
     AdminCaseUpsertInput input,
