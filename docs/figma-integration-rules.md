@@ -45,4 +45,7 @@ Create these components after variables are ready:
 
 ## Current Figma Access Note
 
-The connected Figma account is authenticated as `gehejinnie@gmail.com`, but the available team seat is `View`. Creating or modifying a Figma design library requires edit access. Once an editable team or file is available, use Figma MCP to create the library from this scope.
+Figma is optional for the MVP workflow. If plan or seat limits block creating or
+editing files, continue with `docs/ui-tooling.md` and treat Flutter `ecg_ui` as
+the canonical design system. Once an editable Figma team or file is available,
+use Figma MCP to create the library from this scope.

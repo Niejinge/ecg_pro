@@ -31,7 +31,9 @@ ECG Pro uses a clean clinical learning style: quiet surfaces, clear information 
 
 ## Figma Mapping
 
-Create the first Figma library with these foundations:
+When Figma edit access is available, create the first Figma library with these
+foundations. Until then, use `docs/ui-tooling.md` and keep Flutter `ecg_ui` as
+the source of truth.
 
 - Variables: `color/*`, `spacing/*`, `radius/*`, `text/*`.
 - Components: `Badge`, `Metric Card`, `Action Card`, `Empty State`, `Section Card`, `Page Shell`.
