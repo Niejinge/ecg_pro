@@ -68,7 +68,7 @@ def list_cases(
     *,
     public_only: bool,
 ) -> tuple[list[ECGCase], int]:
-    base_statement = select(ECGCase.id).distinct()
+    base_statement = select(ECGCase.id)
     base_statement = _apply_filters(base_statement, filters, public_only=public_only)
 
     total = session.scalar(select(func.count()).select_from(base_statement.subquery())) or 0

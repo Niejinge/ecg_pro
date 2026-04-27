@@ -66,6 +66,9 @@ Start the Docker stack:
 .\infra\scripts\dev-up.ps1
 ```
 
+The API container waits for PostgreSQL, runs Alembic migrations, and bootstraps
+the default admin account before starting Uvicorn.
+
 Useful URLs:
 
 - User web app: `http://localhost:8080/`
@@ -73,6 +76,18 @@ Useful URLs:
 - API health check: `http://localhost:8080/health`
 - API docs: `http://localhost:8000/docs`
 - MinIO console: `http://localhost:9001`
+
+Run smoke checks after the stack starts:
+
+```powershell
+.\infra\scripts\smoke-docker.ps1
+```
+
+If the database has not been seeded yet:
+
+```powershell
+.\infra\scripts\smoke-docker.ps1 -SeedDemoData
+```
 
 Stop the Docker stack:
 
@@ -82,8 +97,13 @@ Stop the Docker stack:
 
 ## Demo Data
 
-After the API dependencies are available, seed demo content from the backend
-project:
+After the Docker stack is running, seed demo content inside the API container:
+
+```powershell
+docker exec ecg_pro_api python scripts\seed_demo_data.py
+```
+
+For local backend development outside Docker, seed from the backend project:
 
 ```powershell
 cd services\api

@@ -112,6 +112,14 @@ python scripts/seed_demo_data.py
 - 管理端：`http://localhost:8080/admin/`
 - 健康检查：`http://localhost:8080/health`
 
+API 容器启动时会自动等待 PostgreSQL、执行 Alembic 迁移，并初始化默认管理员账号。
+
+Docker 栈启动后可运行 smoke check：
+
+```powershell
+.\infra\scripts\smoke-docker.ps1 -SeedDemoData
+```
+
 ### Flutter 用户端
 
 ```powershell
