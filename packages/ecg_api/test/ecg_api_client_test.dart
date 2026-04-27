@@ -113,6 +113,49 @@ void main() {
     expect(response.items.single.status, CaseStatus.published);
   });
 
+  test(
+    'fetchPublicCases passes featured filter and parses public items',
+    () async {
+      late Uri requestedUri;
+      final mockHttpClient = MockClient((request) async {
+        requestedUri = request.url;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {
+                'id': 'case-1',
+                'case_code': 'ECG-DEMO-003',
+                'title': '急性前壁 STEMI',
+                'diagnosis': '急性前壁 ST 段抬高型心肌梗死',
+                'difficulty': 'advanced',
+                'risk_level': 'critical',
+                'category_name': '心肌缺血与梗死',
+              },
+            ],
+            'total': 1,
+            'page': 1,
+            'page_size': 20,
+            'has_next': false,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final client = EcgApiClient(
+        baseUrl: 'https://api.ecgpro.local',
+        httpClient: mockHttpClient,
+      );
+
+      final response = await client.fetchPublicCases(isFeatured: true);
+
+      expect(requestedUri.path, '/api/v1/public/cases');
+      expect(requestedUri.queryParameters['is_featured'], 'true');
+      expect(response.total, 1);
+      expect(response.items.single.caseCode, 'ECG-DEMO-003');
+      expect(response.items.single.riskLevel, RiskLevel.critical);
+    },
+  );
+
   test('fetchPublicQuizQuestions parses quiz payload', () async {
     final mockHttpClient = MockClient((request) async {
       expect(request.url.path, '/api/v1/public/cases/case-1/quiz');

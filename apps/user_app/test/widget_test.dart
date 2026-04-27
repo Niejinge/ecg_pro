@@ -3,6 +3,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:user_app/main.dart';
 
 void main() {
+  testWidgets('guest user can load public case list', (tester) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('游客模式可浏览'), findsOneWidget);
+    expect(find.text('学习内容加载失败，请检查接口服务是否可用。'), findsNothing);
+    expect(find.text('进入案例'), findsOneWidget);
+  });
+
   testWidgets('user can browse case list and detail page', (
     tester,
   ) async {

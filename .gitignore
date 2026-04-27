@@ -31,6 +31,7 @@ venv/
 !.env.example
 
 # Local runtime data
+tmp/
 services/api/storage/
 infra/docker/postgres_data/
 infra/docker/minio_data/

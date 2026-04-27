@@ -190,12 +190,12 @@ class _UserHomePageState extends State<UserHomePage> {
         isFeatured: _featuredOnly,
         page: _currentPage,
       );
-      List<LearningProgressItem> progress = const [];
+      final progress = <LearningProgressItem>[];
       List<FavoriteItem> favorites = const [];
       List<WrongQuestionItem> wrongQuestions = const [];
       if (widget.session != null) {
-        progress = await widget.repository.fetchLearningProgress(
-          widget.session!,
+        progress.addAll(
+          await widget.repository.fetchLearningProgress(widget.session!),
         );
         favorites = await widget.repository.fetchFavorites(widget.session!);
         wrongQuestions = await widget.repository.fetchWrongQuestions(
@@ -233,7 +233,11 @@ class _UserHomePageState extends State<UserHomePage> {
       setState(() {
         _errorMessage = error.message;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      assert(() {
+        debugPrint('Failed to load user home data: $error\n$stackTrace');
+        return true;
+      }());
       if (!mounted) {
         return;
       }
