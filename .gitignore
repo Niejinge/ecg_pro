@@ -34,3 +34,7 @@ venv/
 services/api/storage/
 infra/docker/postgres_data/
 infra/docker/minio_data/
+infra/nginx/html/admin/**
+infra/nginx/html/user/**
+!infra/nginx/html/admin/.gitkeep
+!infra/nginx/html/user/.gitkeep

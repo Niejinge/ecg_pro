@@ -9,11 +9,14 @@ ECG Pro 是一个面向心电图学习场景的多端平台，一期包含：
 - MinIO / 本地文件存储
 - Docker Compose 开发与演示环境
 
-当前仓库已完成一期前两阶段的基础能力建设，详细文档见：
+当前仓库已进入一期联调与演示环境收尾阶段，详细文档见：
 
 - [需求文档](D:/projects/ecg_pro/docs/requirements.md)
 - [系统架构](D:/projects/ecg_pro/docs/architecture.md)
 - [开发计划](D:/projects/ecg_pro/docs/development-plan.md)
+- [设计系统](D:/projects/ecg_pro/docs/design-system.md)
+- [UI 工具链](D:/projects/ecg_pro/docs/ui-tooling.md)
+- [演示运行手册](D:/projects/ecg_pro/docs/demo-runbook.md)
 
 ## 目录结构
 
@@ -45,23 +48,47 @@ docs/
 - FastAPI 服务入口与模块划分
 - 后端认证、案例管理、分类标签、测验、学习记录与图片管理接口
 - 案例筛选分页、答题历史查询与演示种子数据脚本
-- Docker Compose 基础配置
+- 管理端案例、分类、标签、题目、图片与发布管理基础闭环
+- 用户端案例浏览、详情、测验、收藏、错题与学习记录基础闭环
+- `ecg_ui` 共享设计系统基础组件
+- Docker Compose 基础配置与 Web 静态托管入口
+- 本地统一验证、Web 构建与 Android APK 构建脚本
 
 下一步将按计划进入：
 
-1. 管理端案例管理页面接入真实接口
-2. 用户端学习页、详情页与测验页闭环
-3. 共享 UI 组件库增强
-4. Docker 联调与部署体验完善
+1. Docker Compose 联调与演示环境 smoke check
+2. Web 与 Android 构建稳定性验证
+3. 核心页面体验修补与真实数据演示
+4. 部署说明与阶段 5 测试覆盖完善
+
+## 本地验证
+
+运行后端、Dart package、Flutter package 与两个 Flutter 应用的分析和测试：
+
+```powershell
+.\infra\scripts\verify-all.ps1
+```
+
+如需同时验证 Web 构建：
+
+```powershell
+.\infra\scripts\verify-all.ps1 -IncludeBuilds
+```
+
+如需验证 Android debug APK 构建：
+
+```powershell
+.\infra\scripts\verify-all.ps1 -IncludeAndroidBuild
+```
 
 ## 本地启动建议
 
 ### 后端依赖
 
-在仓库根目录准备 `.env` 后，可使用：
+启动 Docker Desktop 后，在仓库根目录准备 `.env`，可使用：
 
 ```powershell
-docker compose -f infra/docker/docker-compose.yml up --build
+.\infra\scripts\dev-up.ps1
 ```
 
 如需快速生成演示数据，可使用：
@@ -70,6 +97,20 @@ docker compose -f infra/docker/docker-compose.yml up --build
 cd services/api
 python scripts/seed_demo_data.py
 ```
+
+### Web 演示构建
+
+构建用户端和管理端 Web，并同步到 Nginx 静态目录：
+
+```powershell
+.\infra\scripts\build-web.ps1
+```
+
+随后启动 Docker 后可访问：
+
+- 用户端：`http://localhost:8080/`
+- 管理端：`http://localhost:8080/admin/`
+- 健康检查：`http://localhost:8080/health`
 
 ### Flutter 用户端
 
@@ -83,6 +124,12 @@ Android 调试可使用：
 ```powershell
 cd apps/user_app
 flutter run -d android
+```
+
+Android APK 构建可使用：
+
+```powershell
+.\infra\scripts\build-android.ps1
 ```
 
 ### Flutter 管理端

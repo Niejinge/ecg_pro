@@ -1,3 +1,4 @@
 $composeFile = Join-Path $PSScriptRoot "..\docker\docker-compose.yml"
-docker compose -f $composeFile down
+$ErrorActionPreference = "Stop"
 
+docker compose -f $composeFile down
