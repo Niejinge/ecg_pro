@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('EcgScaffold and EcgSectionCard render the shared layout', (tester) async {
+  testWidgets('EcgScaffold and EcgSectionCard render the shared layout', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: EcgAppTheme.light(),
@@ -23,5 +25,42 @@ void main() {
     expect(find.text('测试副标题'), findsOneWidget);
     expect(find.text('卡片标题'), findsOneWidget);
     expect(find.text('卡片内容'), findsOneWidget);
+  });
+
+  testWidgets('shared learning primitives render core content', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EcgAppTheme.light(),
+        home: Scaffold(
+          body: Column(
+            children: [
+              const EcgBadge(
+                label: '中风险',
+                color: AppColors.warning,
+                icon: Icons.warning_rounded,
+              ),
+              const EcgMetricCard(
+                label: '已完成案例',
+                value: '12',
+                icon: Icons.check_circle_rounded,
+              ),
+              EcgActionCard(
+                title: '房颤识别',
+                subtitle: '继续完成测验',
+                actionLabel: '继续学习',
+                icon: Icons.timeline_rounded,
+                onPressed: () {},
+              ),
+              const EcgEmptyState(title: '暂无案例', message: '换个筛选条件再试试。'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('中风险'), findsOneWidget);
+    expect(find.text('已完成案例'), findsOneWidget);
+    expect(find.text('房颤识别'), findsOneWidget);
+    expect(find.text('暂无案例'), findsOneWidget);
   });
 }

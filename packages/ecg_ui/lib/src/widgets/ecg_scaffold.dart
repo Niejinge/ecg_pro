@@ -53,4 +53,3 @@ class EcgScaffold extends StatelessWidget {
     );
   }
 }
-
