@@ -43,6 +43,7 @@ void main() {
                 label: '已完成案例',
                 value: '12',
                 icon: Icons.check_circle_rounded,
+                supportingText: '本周新增 3 个',
               ),
               EcgActionCard(
                 title: '房颤识别',
@@ -60,6 +61,7 @@ void main() {
 
     expect(find.text('中风险'), findsOneWidget);
     expect(find.text('已完成案例'), findsOneWidget);
+    expect(find.text('本周新增 3 个'), findsOneWidget);
     expect(find.text('房颤识别'), findsOneWidget);
     expect(find.text('暂无案例'), findsOneWidget);
   });

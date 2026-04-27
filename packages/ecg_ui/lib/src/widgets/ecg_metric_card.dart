@@ -10,11 +10,13 @@ class EcgMetricCard extends StatelessWidget {
     required this.label,
     required this.value,
     this.icon,
+    this.supportingText,
   });
 
   final String label;
   final String value;
   final IconData? icon;
+  final String? supportingText;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +53,15 @@ class EcgMetricCard extends StatelessWidget {
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
+          if (supportingText != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              supportingText!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ],
         ],
       ),
     );
