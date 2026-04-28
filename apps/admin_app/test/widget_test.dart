@@ -49,6 +49,37 @@ void main() {
     expect(find.text('案例管理'), findsOneWidget);
   });
 
+  testWidgets('admin app clears expired session on dashboard 401', (
+    tester,
+  ) async {
+    final sessionStore = _MemorySessionStore(
+      initialSession: const AdminSession(
+        accessToken: 'stale-token',
+        expiresIn: 7200,
+        user: AuthUser(
+          id: 'user-1',
+          username: 'admin',
+          displayName: 'Admin User',
+          isActive: true,
+          isSuperuser: true,
+          roleCodes: ['admin'],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      AdminApp(
+        repository: _UnauthorizedDashboardRepository(),
+        sessionStore: sessionStore,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('管理员登录'), findsOneWidget);
+    expect(await sessionStore.read(), isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('case management keeps table actions readable', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -84,6 +115,13 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _UnauthorizedDashboardRepository extends _FakeAdminRepository {
+  @override
+  Future<DashboardSummary> fetchDashboardSummary(AdminSession session) async {
+    throw const EcgApiException(message: 'invalid token', statusCode: 401);
+  }
 }
 
 class _MemorySessionStore implements AdminSessionStore {

@@ -102,6 +102,7 @@ class _AdminAppState extends State<AdminApp> {
               repository: widget.repository,
               session: _session!,
               onLogout: _handleLogout,
+              onAuthExpired: _handleLogout,
             ),
     );
   }
@@ -370,11 +371,13 @@ class _AdminShell extends StatefulWidget {
     required this.repository,
     required this.session,
     required this.onLogout,
+    required this.onAuthExpired,
   });
 
   final AdminRepository repository;
   final AdminSession session;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
+  final Future<void> Function() onAuthExpired;
 
   @override
   State<_AdminShell> createState() => _AdminShellState();
@@ -473,7 +476,7 @@ class _AdminShellState extends State<_AdminShell> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton(
-                            onPressed: widget.onLogout,
+                            onPressed: () => widget.onLogout(),
                             child: const Text('退出登录'),
                           ),
                         ),
@@ -513,6 +516,7 @@ class _AdminShellState extends State<_AdminShell> {
           child: _DashboardPage(
             repository: widget.repository,
             session: widget.session,
+            onAuthExpired: widget.onAuthExpired,
           ),
         );
       case _AdminSection.taxonomy:
@@ -523,6 +527,7 @@ class _AdminShellState extends State<_AdminShell> {
           child: _TaxonomyPage(
             repository: widget.repository,
             session: widget.session,
+            onAuthExpired: widget.onAuthExpired,
           ),
         );
       case _AdminSection.cases:
@@ -533,6 +538,7 @@ class _AdminShellState extends State<_AdminShell> {
           child: _CasesPage(
             repository: widget.repository,
             session: widget.session,
+            onAuthExpired: widget.onAuthExpired,
           ),
         );
     }
@@ -641,10 +647,15 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _DashboardPage extends StatefulWidget {
-  const _DashboardPage({required this.repository, required this.session});
+  const _DashboardPage({
+    required this.repository,
+    required this.session,
+    required this.onAuthExpired,
+  });
 
   final AdminRepository repository;
   final AdminSession session;
+  final Future<void> Function() onAuthExpired;
 
   @override
   State<_DashboardPage> createState() => _DashboardPageState();
@@ -656,7 +667,18 @@ class _DashboardPageState extends State<_DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _summaryFuture = widget.repository.fetchDashboardSummary(widget.session);
+    _summaryFuture = _loadSummary();
+  }
+
+  Future<DashboardSummary> _loadSummary() async {
+    try {
+      return await widget.repository.fetchDashboardSummary(widget.session);
+    } on EcgApiException catch (error) {
+      if (error.statusCode == 401) {
+        await widget.onAuthExpired();
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -731,10 +753,15 @@ class _DashboardPageState extends State<_DashboardPage> {
 }
 
 class _TaxonomyPage extends StatefulWidget {
-  const _TaxonomyPage({required this.repository, required this.session});
+  const _TaxonomyPage({
+    required this.repository,
+    required this.session,
+    required this.onAuthExpired,
+  });
 
   final AdminRepository repository;
   final AdminSession session;
+  final Future<void> Function() onAuthExpired;
 
   @override
   State<_TaxonomyPage> createState() => _TaxonomyPageState();
@@ -770,6 +797,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
         _tags = tags;
       });
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -808,6 +838,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
       ).showSnackBar(SnackBar(content: Text(item == null ? '分类已创建' : '分类已更新')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -840,6 +873,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
       ).showSnackBar(SnackBar(content: Text(item == null ? '标签已创建' : '标签已更新')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -869,6 +905,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
       ).showSnackBar(const SnackBar(content: Text('分类已删除')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -898,6 +937,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
       ).showSnackBar(const SnackBar(content: Text('标签已删除')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -1073,10 +1115,15 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
 }
 
 class _CasesPage extends StatefulWidget {
-  const _CasesPage({required this.repository, required this.session});
+  const _CasesPage({
+    required this.repository,
+    required this.session,
+    required this.onAuthExpired,
+  });
 
   final AdminRepository repository;
   final AdminSession session;
+  final Future<void> Function() onAuthExpired;
 
   @override
   State<_CasesPage> createState() => _CasesPageState();
@@ -1138,6 +1185,9 @@ class _CasesPageState extends State<_CasesPage> {
         _cases = cases;
       });
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -1182,6 +1232,9 @@ class _CasesPageState extends State<_CasesPage> {
       ).showSnackBar(SnackBar(content: Text('案例“${item.title}”已发布')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -1202,6 +1255,9 @@ class _CasesPageState extends State<_CasesPage> {
       ).showSnackBar(SnackBar(content: Text('案例“${item.title}”已下线')));
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -1234,6 +1290,9 @@ class _CasesPageState extends State<_CasesPage> {
       }
       await _load();
     } catch (error) {
+      if (await _handleUnauthorized(error, widget.onAuthExpired)) {
+        return;
+      }
       if (!mounted) {
         return;
       }
@@ -3373,6 +3432,17 @@ Future<bool> _showConfirmDialog(
     ),
   );
   return result ?? false;
+}
+
+Future<bool> _handleUnauthorized(
+  Object error,
+  Future<void> Function() onAuthExpired,
+) async {
+  if (error is EcgApiException && error.statusCode == 401) {
+    await onAuthExpired();
+    return true;
+  }
+  return false;
 }
 
 class _AdminDataTable extends StatelessWidget {
