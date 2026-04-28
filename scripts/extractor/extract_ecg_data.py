@@ -24,6 +24,10 @@ from typing import Any
 
 DEFAULT_PDF_DIR = r"D:\心电图学习\学习"
 DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
+COMMON_TESSERACT_PATHS = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+]
 
 ECG_KEYWORD_MAP: dict[str, list[str]] = {
     "窦性心律": ["窦性心律", "sinus rhythm"],
@@ -56,8 +60,8 @@ CASE_MARKER_RE = re.compile(
     r"(?:^|\n)\s*((?:病例|案例|例|Case)\s*[\d一二三四五六七八九十百]+[^\n]*)",
     re.IGNORECASE,
 )
-CHAPTER_MARKER_RE = re.compile(
-    r"(?:^|\n)\s*((?:第[\d一二三四五六七八九十百]+[章节篇]|Chapter\s+\d+)[^\n]*)",
+CHAPTER_LINE_RE = re.compile(
+    r"^(?:第\s*[\d一二三四五六七八九十百]+\s*[章节篇]|Chapter\s+\d+)\b.*",
     re.IGNORECASE,
 )
 
@@ -77,6 +81,21 @@ def safe_slug(value: str, fallback: str = "ecg_pdf") -> str:
     cleaned = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", value, flags=re.UNICODE)
     cleaned = cleaned.strip("._-")
     return cleaned[:80] or fallback
+
+
+def normalize_ocr_text(text: str) -> str:
+    """Reduce OCR spacing noise while preserving line boundaries for headings."""
+    if not text:
+        return ""
+
+    normalized_lines = []
+    for raw_line in text.replace("\u3000", " ").splitlines():
+        line = re.sub(r"[ \t]+", " ", raw_line).strip()
+        line = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", line)
+        line = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[，。；：、])", "", line)
+        line = re.sub(r"(?<=[，。；：、])\s+(?=[\u4e00-\u9fff])", "", line)
+        normalized_lines.append(line)
+    return "\n".join(normalized_lines).strip()
 
 
 def find_pdf(keyword: str | None = None, exact_path: str | None = None) -> str | None:
@@ -173,16 +192,40 @@ def find_case_marker(text: str) -> str | None:
 
 
 def find_chapter_marker(text: str) -> str | None:
-    match = CHAPTER_MARKER_RE.search(text or "")
-    return match.group(1).strip() if match else None
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        if not CHAPTER_LINE_RE.match(line):
+            continue
+        marker = line
+        if index + 1 < len(lines):
+            next_line = lines[index + 1].strip()
+            if 2 <= len(next_line) <= 40 and not CHAPTER_LINE_RE.match(next_line):
+                marker = f"{marker} {next_line}"
+        return marker[:80]
+    return None
 
 
-def is_tesseract_available() -> bool:
-    return shutil.which("tesseract") is not None
+def discover_tesseract_cmd(explicit_cmd: str | None = None) -> str | None:
+    if explicit_cmd and Path(explicit_cmd).exists():
+        return explicit_cmd
+
+    path_cmd = shutil.which("tesseract")
+    if path_cmd:
+        return path_cmd
+
+    for candidate in COMMON_TESSERACT_PATHS:
+        if Path(candidate).exists():
+            return candidate
+    return None
 
 
-def ocr_page(image_path: Path, lang: str) -> OcrResult:
-    if not is_tesseract_available():
+def is_tesseract_available(explicit_cmd: str | None = None) -> bool:
+    return discover_tesseract_cmd(explicit_cmd) is not None
+
+
+def ocr_page(image_path: Path, lang: str, tesseract_cmd: str | None = None) -> OcrResult:
+    command = discover_tesseract_cmd(tesseract_cmd)
+    if not command:
         return OcrResult("", "unavailable", "tesseract executable not found in PATH")
 
     try:
@@ -191,6 +234,7 @@ def ocr_page(image_path: Path, lang: str) -> OcrResult:
     except ImportError as exc:
         return OcrResult("", "unavailable", f"OCR python dependency missing: {exc}")
 
+    pytesseract.pytesseract.tesseract_cmd = command
     try:
         text = pytesseract.image_to_string(Image.open(image_path), lang=lang)
     except Exception as exc:  # pragma: no cover - depends on local OCR install
@@ -255,7 +299,9 @@ def extract_pdf(
     max_pages: int | None = None,
     ocr_mode: str = "auto",
     ocr_lang: str = "chi_sim+eng",
+    tesseract_cmd: str | None = None,
     case_page_span: int = 2,
+    grouping: str = "auto",
     case_prefix: str = "ECG-BOOK",
     book_title: str | None = None,
 ) -> dict[str, Any]:
@@ -275,7 +321,8 @@ def extract_pdf(
 
     print(f"Processing: {pdf_file.name}")
     print(f"Pages: {pages_to_process}/{total_pages}")
-    print(f"OCR mode: {ocr_mode} ({'available' if is_tesseract_available() else 'unavailable'})")
+    detected_tesseract = discover_tesseract_cmd(tesseract_cmd)
+    print(f"OCR mode: {ocr_mode} ({detected_tesseract or 'unavailable'})")
 
     pages: list[dict[str, Any]] = []
     ocr_status_counts: dict[str, int] = {}
@@ -293,11 +340,12 @@ def extract_pdf(
         native_text = page.get_text("text").strip()
         ocr_result = OcrResult("", "skipped")
         if should_ocr_page(native_text, ocr_mode):
-            ocr_result = ocr_page(page_image_path, ocr_lang)
+            ocr_result = ocr_page(page_image_path, ocr_lang, detected_tesseract)
         ocr_status_counts[ocr_result.status] = ocr_status_counts.get(ocr_result.status, 0) + 1
 
         page_text = native_text if native_text else ocr_result.text
-        keywords = detect_keywords(page_text)
+        normalized_text = normalize_ocr_text(page_text)
+        keywords = detect_keywords(normalized_text)
         embedded_images = extract_embedded_images(doc, page, page_number, images_dir)
 
         pages.append(
@@ -311,11 +359,12 @@ def extract_pdf(
                 "ocr_status": ocr_result.status,
                 "ocr_error": ocr_result.error,
                 "text": page_text,
+                "normalized_text": normalized_text,
                 "has_native_text": len(native_text) >= 30,
                 "has_ocr_text": bool(ocr_result.text),
                 "is_scanned_page": len(native_text) < 30,
-                "case_marker": find_case_marker(page_text),
-                "chapter_marker": find_chapter_marker(page_text),
+                "case_marker": find_case_marker(normalized_text),
+                "chapter_marker": find_chapter_marker(normalized_text),
                 "ecg_keywords": keywords,
                 "embedded_images": embedded_images,
                 "total_embedded_images": len(embedded_images),
@@ -327,6 +376,7 @@ def extract_pdf(
     cases = group_into_cases(
         pages=pages,
         case_page_span=case_page_span,
+        grouping=grouping,
         case_prefix=case_prefix,
         source_book=title,
     )
@@ -344,6 +394,7 @@ def extract_pdf(
             "render_dpi": render_dpi,
             "ocr_mode": ocr_mode,
             "ocr_language": ocr_lang,
+            "tesseract_cmd": detected_tesseract,
         },
         "summary": {
             "total_pages": total_pages,
@@ -355,6 +406,7 @@ def extract_pdf(
             "total_embedded_images": sum(page["total_embedded_images"] for page in pages),
             "total_cases_grouped": len(cases),
             "ocr_status_counts": ocr_status_counts,
+            "grouping_strategy": infer_grouping_strategy(pages, grouping),
         },
         "cases": cases,
         "admin_import_payloads": [case["platform_payload"] for case in cases],
@@ -368,6 +420,7 @@ def extract_pdf(
 def group_into_cases(
     pages: list[dict[str, Any]],
     case_page_span: int,
+    grouping: str,
     case_prefix: str,
     source_book: str,
 ) -> list[dict[str, Any]]:
@@ -376,11 +429,19 @@ def group_into_cases(
 
     cases: list[list[dict[str, Any]]] = []
     current: list[dict[str, Any]] = []
-    markers_seen = sum(1 for page in pages if page.get("case_marker"))
+    strategy = infer_grouping_strategy(pages, grouping)
 
-    if markers_seen >= 2:
+    if strategy == "case":
         for page in pages:
             if page.get("case_marker") and current:
+                cases.append(current)
+                current = []
+            current.append(page)
+        if current:
+            cases.append(current)
+    elif strategy == "chapter":
+        for page in pages:
+            if page.get("chapter_marker") and current:
                 cases.append(current)
                 current = []
             current.append(page)
@@ -397,6 +458,19 @@ def group_into_cases(
     ]
 
 
+def infer_grouping_strategy(pages: list[dict[str, Any]], requested: str) -> str:
+    if requested != "auto":
+        return requested
+
+    case_markers = sum(1 for page in pages if page.get("case_marker"))
+    chapter_markers = sum(1 for page in pages if page.get("chapter_marker"))
+    if case_markers >= 2:
+        return "case"
+    if chapter_markers >= 2:
+        return "chapter"
+    return "fixed"
+
+
 def build_case(
     case_index: int,
     pages: list[dict[str, Any]],
@@ -404,7 +478,9 @@ def build_case(
     source_book: str,
 ) -> dict[str, Any]:
     page_numbers = [page["page_number"] for page in pages]
-    combined_text = "\n".join(page.get("text") or "" for page in pages).strip()
+    combined_text = "\n".join(
+        page.get("normalized_text") or page.get("text") or "" for page in pages
+    ).strip()
     native_text = "\n".join(page.get("native_text") or "" for page in pages).strip()
     ocr_text = "\n".join(page.get("ocr_text") or "" for page in pages).strip()
 
@@ -416,8 +492,9 @@ def build_case(
 
     chapter_name = next((page.get("chapter_marker") for page in pages if page.get("chapter_marker")), None)
     case_marker = next((page.get("case_marker") for page in pages if page.get("case_marker")), None)
-    diagnosis = infer_diagnosis(combined_text, keywords)
-    risk_level = infer_risk_level(combined_text, keywords)
+    is_case_like_record = bool(case_marker)
+    diagnosis = infer_diagnosis(combined_text, keywords) if is_case_like_record else "待人工判读"
+    risk_level = infer_risk_level(combined_text, keywords) if is_case_like_record else "low"
     difficulty = infer_difficulty(combined_text, risk_level, keywords)
     patient_info = extract_patient_info(combined_text)
 
@@ -465,7 +542,7 @@ def build_case(
     if not detailed_description and combined_text:
         detailed_description = combined_text[:1200]
 
-    needs_review = diagnosis == "待人工判读" or not combined_text
+    needs_review = not is_case_like_record or diagnosis == "待人工判读" or not combined_text
     platform_payload = {
         "case_code": f"{case_prefix}-{case_index:04d}",
         "title": title[:255],
@@ -521,7 +598,7 @@ def build_case(
         "image_candidates": image_candidates,
         "total_images": len(image_candidates),
         "platform_payload": platform_payload,
-        "notes": "自动抽取草稿，需要人工校对诊断、风险、治疗方案和图片裁剪。",
+        "notes": "自动抽取草稿，需要人工校对诊断、风险、治疗方案和图片裁剪；教材章节不会自动当作真实病例诊断。",
     }
 
 
@@ -610,7 +687,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="auto OCRs image-only pages if Tesseract is available.",
     )
     parser.add_argument("--ocr-lang", default="chi_sim+eng", help="Tesseract language code.")
+    parser.add_argument("--tesseract-cmd", help="Explicit path to tesseract.exe.")
     parser.add_argument("--case-page-span", type=int, default=2, help="Fallback pages per case.")
+    parser.add_argument(
+        "--grouping",
+        choices=["auto", "fixed", "case", "chapter"],
+        default="auto",
+        help="How to group pages into draft records.",
+    )
     parser.add_argument("--case-prefix", default="ECG-BOOK", help="Generated case code prefix.")
     parser.add_argument("--book-title", help="Override source book title.")
     return parser.parse_args(argv)
@@ -636,7 +720,9 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=args.max_pages,
         ocr_mode=args.ocr,
         ocr_lang=args.ocr_lang,
+        tesseract_cmd=args.tesseract_cmd,
         case_page_span=args.case_page_span,
+        grouping=args.grouping,
         case_prefix=args.case_prefix,
         book_title=args.book_title,
     )
