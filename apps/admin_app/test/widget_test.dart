@@ -145,6 +145,46 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('taxonomy tables keep edit and delete actions on one row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sessionStore = _MemorySessionStore(
+      initialSession: const AdminSession(
+        accessToken: 'demo-token',
+        expiresIn: 7200,
+        user: AuthUser(
+          id: 'user-1',
+          username: 'admin',
+          displayName: 'Admin User',
+          isActive: true,
+          isSuperuser: true,
+          roleCodes: ['admin'],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      AdminApp(repository: _FakeAdminRepository(), sessionStore: sessionStore),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('分类与标签'));
+    await tester.pumpAndSettle();
+
+    final editTop = tester.getTopLeft(find.text('编辑').first).dy;
+    final deleteTop = tester.getTopLeft(find.text('删除').first).dy;
+
+    expect(find.text('分类管理'), findsOneWidget);
+    expect(find.text('标签管理'), findsOneWidget);
+    expect((editTop - deleteTop).abs(), lessThan(4));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _UnauthorizedDashboardRepository extends _FakeAdminRepository {

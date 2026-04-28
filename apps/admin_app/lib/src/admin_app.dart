@@ -1051,7 +1051,7 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                   DataCell(Text('${item.sortOrder}')),
                   DataCell(Text(item.isVisible ? '是' : '否')),
                   DataCell(
-                    _TableActions(
+                    _InlineTableActions(
                       children: [
                         _TableActionButton(
                           label: '编辑',
@@ -1108,7 +1108,7 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                     ),
                   ),
                   DataCell(
-                    _TableActions(
+                    _InlineTableActions(
                       children: [
                         _TableActionButton(
                           label: '编辑',
@@ -3509,6 +3509,28 @@ class _TableActions extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 156, maxWidth: 220),
       child: Wrap(spacing: 6, runSpacing: 6, children: children),
+    );
+  }
+}
+
+class _InlineTableActions extends StatelessWidget {
+  const _InlineTableActions({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 136,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < children.length; index++) ...[
+            if (index > 0) const SizedBox(width: 8),
+            Flexible(child: children[index]),
+          ],
+        ],
+      ),
     );
   }
 }
