@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def get_summary_value(summary: dict[str, Any], key: str, default: Any = 0) -> Any:

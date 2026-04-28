@@ -284,8 +284,10 @@ def extract_embedded_images(doc: Any, page: Any, page_number: int, images_dir: P
     return embedded_images
 
 
-def should_ocr_page(native_text: str, ocr_mode: str) -> bool:
+def should_ocr_page(native_text: str, ocr_mode: str, page_number: int, ocr_page_step: int) -> bool:
     if ocr_mode == "off":
+        return False
+    if ocr_page_step > 1 and (page_number - 1) % ocr_page_step != 0:
         return False
     if ocr_mode == "force":
         return True
@@ -299,9 +301,11 @@ def extract_pdf(
     max_pages: int | None = None,
     ocr_mode: str = "auto",
     ocr_lang: str = "chi_sim+eng",
+    ocr_page_step: int = 1,
     tesseract_cmd: str | None = None,
     case_page_span: int = 2,
     grouping: str = "auto",
+    infer_non_case_diagnosis: bool = False,
     case_prefix: str = "ECG-BOOK",
     book_title: str | None = None,
 ) -> dict[str, Any]:
@@ -339,7 +343,7 @@ def extract_pdf(
 
         native_text = page.get_text("text").strip()
         ocr_result = OcrResult("", "skipped")
-        if should_ocr_page(native_text, ocr_mode):
+        if should_ocr_page(native_text, ocr_mode, page_number, max(1, ocr_page_step)):
             ocr_result = ocr_page(page_image_path, ocr_lang, detected_tesseract)
         ocr_status_counts[ocr_result.status] = ocr_status_counts.get(ocr_result.status, 0) + 1
 
@@ -377,6 +381,7 @@ def extract_pdf(
         pages=pages,
         case_page_span=case_page_span,
         grouping=grouping,
+        infer_non_case_diagnosis=infer_non_case_diagnosis,
         case_prefix=case_prefix,
         source_book=title,
     )
@@ -394,6 +399,7 @@ def extract_pdf(
             "render_dpi": render_dpi,
             "ocr_mode": ocr_mode,
             "ocr_language": ocr_lang,
+            "ocr_page_step": max(1, ocr_page_step),
             "tesseract_cmd": detected_tesseract,
         },
         "summary": {
@@ -407,6 +413,7 @@ def extract_pdf(
             "total_cases_grouped": len(cases),
             "ocr_status_counts": ocr_status_counts,
             "grouping_strategy": infer_grouping_strategy(pages, grouping),
+            "infer_non_case_diagnosis": infer_non_case_diagnosis,
         },
         "cases": cases,
         "admin_import_payloads": [case["platform_payload"] for case in cases],
@@ -421,6 +428,7 @@ def group_into_cases(
     pages: list[dict[str, Any]],
     case_page_span: int,
     grouping: str,
+    infer_non_case_diagnosis: bool,
     case_prefix: str,
     source_book: str,
 ) -> list[dict[str, Any]]:
@@ -453,7 +461,13 @@ def group_into_cases(
             cases.append(pages[start : start + span])
 
     return [
-        build_case(index, case_pages, case_prefix=case_prefix, source_book=source_book)
+        build_case(
+            index,
+            case_pages,
+            case_prefix=case_prefix,
+            source_book=source_book,
+            infer_non_case_diagnosis=infer_non_case_diagnosis,
+        )
         for index, case_pages in enumerate(cases, start=1)
     ]
 
@@ -476,6 +490,7 @@ def build_case(
     pages: list[dict[str, Any]],
     case_prefix: str,
     source_book: str,
+    infer_non_case_diagnosis: bool = False,
 ) -> dict[str, Any]:
     page_numbers = [page["page_number"] for page in pages]
     combined_text = "\n".join(
@@ -493,8 +508,9 @@ def build_case(
     chapter_name = next((page.get("chapter_marker") for page in pages if page.get("chapter_marker")), None)
     case_marker = next((page.get("case_marker") for page in pages if page.get("case_marker")), None)
     is_case_like_record = bool(case_marker)
-    diagnosis = infer_diagnosis(combined_text, keywords) if is_case_like_record else "待人工判读"
-    risk_level = infer_risk_level(combined_text, keywords) if is_case_like_record else "low"
+    can_infer_diagnosis = is_case_like_record or infer_non_case_diagnosis
+    diagnosis = infer_diagnosis(combined_text, keywords) if can_infer_diagnosis else "待人工判读"
+    risk_level = infer_risk_level(combined_text, keywords) if can_infer_diagnosis else "low"
     difficulty = infer_difficulty(combined_text, risk_level, keywords)
     patient_info = extract_patient_info(combined_text)
 
@@ -549,7 +565,7 @@ def build_case(
         "summary": make_summary(combined_text, keywords, page_range),
         "diagnosis": diagnosis,
         "rhythm_type": keywords[0] if keywords else None,
-        "heart_rate": extract_short_field(combined_text, ["心率", "频率"], limit=80),
+        "heart_rate": extract_short_field(combined_text, ["心率", "频率"], limit=64),
         "axis_description": extract_short_field(combined_text, ["电轴", "心电轴"], limit=300),
         "pr_description": extract_short_field(combined_text, ["PR", "P-R"], limit=300),
         "qrs_description": extract_short_field(combined_text, ["QRS"], limit=300),
@@ -687,6 +703,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="auto OCRs image-only pages if Tesseract is available.",
     )
     parser.add_argument("--ocr-lang", default="chi_sim+eng", help="Tesseract language code.")
+    parser.add_argument("--ocr-page-step", type=int, default=1, help="OCR every Nth page; still renders all pages.")
     parser.add_argument("--tesseract-cmd", help="Explicit path to tesseract.exe.")
     parser.add_argument("--case-page-span", type=int, default=2, help="Fallback pages per case.")
     parser.add_argument(
@@ -696,6 +713,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="How to group pages into draft records.",
     )
     parser.add_argument("--case-prefix", default="ECG-BOOK", help="Generated case code prefix.")
+    parser.add_argument(
+        "--infer-non-case-diagnosis",
+        action="store_true",
+        help="Infer diagnosis/risk from keywords even when no explicit case marker is found.",
+    )
     parser.add_argument("--book-title", help="Override source book title.")
     return parser.parse_args(argv)
 
@@ -720,9 +742,11 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=args.max_pages,
         ocr_mode=args.ocr,
         ocr_lang=args.ocr_lang,
+        ocr_page_step=args.ocr_page_step,
         tesseract_cmd=args.tesseract_cmd,
         case_page_span=args.case_page_span,
         grouping=args.grouping,
+        infer_non_case_diagnosis=args.infer_non_case_diagnosis,
         case_prefix=args.case_prefix,
         book_title=args.book_title,
     )

@@ -12,6 +12,19 @@ python scripts\extractor\extract_ecg_data.py `
   --ocr auto
 ```
 
+For test imports from scanned textbooks without explicit case markers, use fixed grouping and allow rough keyword inference:
+
+```powershell
+python scripts\extractor\extract_ecg_data.py `
+  --pdf "D:\path\book.pdf" `
+  --output-dir scripts\extractor\output\book_import `
+  --grouping fixed `
+  --case-page-span 4 `
+  --ocr-page-step 4 `
+  --infer-non-case-diagnosis `
+  --ocr auto
+```
+
 The extractor writes:
 
 - `ecg_data_extracted.json`: full extraction result with pages and draft cases.
@@ -24,3 +37,15 @@ The extractor writes:
 
 Native text PDFs work without OCR. Scanned PDFs need a local Tesseract install for text recognition.
 If Tesseract is not available, the extractor still renders pages and groups draft cases, then marks OCR as unavailable.
+
+## Import to Local API
+
+```powershell
+python scripts\extractor\import_extracted_cases.py `
+  scripts\extractor\output\some_book_extracted\ecg_data_extracted.json `
+  --publish `
+  --update-existing `
+  --max-images-per-case 2
+```
+
+The importer creates one category per source book, adds a `PDF导入` tag plus OCR keyword tags, creates or updates cases by `case_code`, uploads rendered page images, and optionally publishes the records.
