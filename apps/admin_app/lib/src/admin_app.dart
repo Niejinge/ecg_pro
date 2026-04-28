@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:ecg_api/ecg_api.dart';
 import 'package:ecg_ui/ecg_ui.dart';
 import 'package:file_picker/file_picker.dart';
@@ -972,7 +974,8 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
+      child: _AdminDataTable(
+        minWidth: 720,
         columns: const [
           DataColumn(label: Text('名称')),
           DataColumn(label: Text('Slug')),
@@ -989,16 +992,16 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                   DataCell(Text('${item.sortOrder}')),
                   DataCell(Text(item.isVisible ? '是' : '否')),
                   DataCell(
-                    Wrap(
-                      spacing: AppSpacing.sm,
+                    _TableActions(
                       children: [
-                        TextButton(
+                        _TableActionButton(
+                          label: '编辑',
                           onPressed: () => _editCategory(item),
-                          child: const Text('编辑'),
                         ),
-                        TextButton(
+                        _TableActionButton(
+                          label: '删除',
                           onPressed: () => _deleteCategory(item),
-                          child: const Text('删除'),
+                          isDanger: true,
                         ),
                       ],
                     ),
@@ -1021,7 +1024,8 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
+      child: _AdminDataTable(
+        minWidth: 720,
         columns: const [
           DataColumn(label: Text('名称')),
           DataColumn(label: Text('Slug')),
@@ -1034,18 +1038,27 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                 cells: [
                   DataCell(Text(item.name)),
                   DataCell(Text(item.slug)),
-                  DataCell(Text(item.description ?? '-')),
                   DataCell(
-                    Wrap(
-                      spacing: AppSpacing.sm,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: Text(
+                        item.description ?? '-',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    _TableActions(
                       children: [
-                        TextButton(
+                        _TableActionButton(
+                          label: '编辑',
                           onPressed: () => _editTag(item),
-                          child: const Text('编辑'),
                         ),
-                        TextButton(
+                        _TableActionButton(
+                          label: '删除',
                           onPressed: () => _deleteTag(item),
-                          child: const Text('删除'),
+                          isDanger: true,
                         ),
                       ],
                     ),
@@ -1402,7 +1415,8 @@ class _CasesPageState extends State<_CasesPage> {
                   children: [
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: DataTable(
+                      child: _AdminDataTable(
+                        minWidth: 1040,
                         columns: const [
                           DataColumn(label: Text('编号')),
                           DataColumn(label: Text('标题')),
@@ -1421,12 +1435,27 @@ class _CasesPageState extends State<_CasesPage> {
                                   DataCell(
                                     ConstrainedBox(
                                       constraints: const BoxConstraints(
-                                        maxWidth: 220,
+                                        maxWidth: 180,
                                       ),
-                                      child: Text(item.title),
+                                      child: Text(
+                                        item.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ),
-                                  DataCell(Text(item.categoryName ?? '-')),
+                                  DataCell(
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 160,
+                                      ),
+                                      child: Text(
+                                        item.categoryName ?? '-',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
                                   DataCell(
                                     Text(_difficultyLabel(item.difficulty)),
                                   ),
@@ -1444,27 +1473,26 @@ class _CasesPageState extends State<_CasesPage> {
                                   ),
                                   DataCell(Text(_formatDate(item.updatedAt))),
                                   DataCell(
-                                    Wrap(
-                                      spacing: AppSpacing.sm,
-                                      runSpacing: AppSpacing.sm,
+                                    _TableActions(
                                       children: [
-                                        TextButton(
+                                        _TableActionButton(
+                                          label: '编辑',
                                           onPressed: () => _openEditor(item.id),
-                                          child: const Text('编辑'),
                                         ),
                                         if (item.status != CaseStatus.published)
-                                          TextButton(
+                                          _TableActionButton(
+                                            label: '发布',
                                             onPressed: () => _publish(item),
-                                            child: const Text('发布'),
                                           ),
                                         if (item.status == CaseStatus.published)
-                                          TextButton(
+                                          _TableActionButton(
+                                            label: '下线',
                                             onPressed: () => _offline(item),
-                                            child: const Text('下线'),
                                           ),
-                                        TextButton(
+                                        _TableActionButton(
+                                          label: '删除',
                                           onPressed: () => _delete(item),
-                                          child: const Text('删除'),
+                                          isDanger: true,
                                         ),
                                       ],
                                     ),
@@ -3345,6 +3373,88 @@ Future<bool> _showConfirmDialog(
     ),
   );
   return result ?? false;
+}
+
+class _AdminDataTable extends StatelessWidget {
+  const _AdminDataTable({
+    required this.columns,
+    required this.rows,
+    this.minWidth = 720,
+  });
+
+  final List<DataColumn> columns;
+  final List<DataRow> rows;
+  final double minWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : minWidth;
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: math.max(minWidth, viewportWidth),
+          ),
+          child: DataTable(
+            horizontalMargin: 12,
+            columnSpacing: 24,
+            headingRowHeight: 48,
+            dataRowMinHeight: 56,
+            dataRowMaxHeight: 88,
+            columns: columns,
+            rows: rows,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TableActions extends StatelessWidget {
+  const _TableActions({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 156, maxWidth: 220),
+      child: Wrap(spacing: 6, runSpacing: 6, children: children),
+    );
+  }
+}
+
+class _TableActionButton extends StatelessWidget {
+  const _TableActionButton({
+    required this.label,
+    required this.onPressed,
+    this.isDanger = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool isDanger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isDanger ? AppColors.danger : AppColors.brand;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        minimumSize: const Size(44, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+      ),
+      child: Text(label, softWrap: false),
+    );
+  }
 }
 
 String _difficultyLabel(DifficultyLevel value) {

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:admin_app/main.dart';
 import 'package:ecg_api/ecg_api.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -46,6 +47,42 @@ void main() {
     expect(find.text('案例总数'), findsOneWidget);
     expect(find.text('分类与标签'), findsOneWidget);
     expect(find.text('案例管理'), findsOneWidget);
+  });
+
+  testWidgets('case management keeps table actions readable', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sessionStore = _MemorySessionStore(
+      initialSession: const AdminSession(
+        accessToken: 'demo-token',
+        expiresIn: 7200,
+        user: AuthUser(
+          id: 'user-1',
+          username: 'admin',
+          displayName: 'Admin User',
+          isActive: true,
+          isSuperuser: true,
+          roleCodes: ['admin'],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      AdminApp(repository: _FakeAdminRepository(), sessionStore: sessionStore),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例管理'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('案例列表'), findsOneWidget);
+    expect(find.text('编辑'), findsOneWidget);
+    expect(find.text('下线'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 
