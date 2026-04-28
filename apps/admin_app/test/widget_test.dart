@@ -146,7 +146,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('taxonomy tables keep edit and delete actions on one row', (
+  testWidgets('taxonomy tables use compact action menus', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1440, 900);
@@ -177,12 +177,15 @@ void main() {
     await tester.tap(find.text('分类与标签'));
     await tester.pumpAndSettle();
 
-    final editTop = tester.getTopLeft(find.text('编辑').first).dy;
-    final deleteTop = tester.getTopLeft(find.text('删除').first).dy;
-
     expect(find.text('分类管理'), findsOneWidget);
     expect(find.text('标签管理'), findsOneWidget);
-    expect((editTop - deleteTop).abs(), lessThan(4));
+    expect(find.text('操作'), findsWidgets);
+
+    await tester.tap(find.text('操作').at(1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('编辑'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

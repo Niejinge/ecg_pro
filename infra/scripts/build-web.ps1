@@ -48,16 +48,35 @@ function Sync-Directory {
   Copy-Item -Path (Join-Path $Source "*") -Destination $destinationPath -Recurse -Force
 }
 
+function Disable-FlutterServiceWorker {
+  param([string]$BuildPath)
+
+  $bootstrapPath = Join-Path $BuildPath "flutter_bootstrap.js"
+  if (-not (Test-Path $bootstrapPath)) {
+    return
+  }
+
+  $content = Get-Content -LiteralPath $bootstrapPath -Raw
+  $content = [regex]::Replace(
+    $content,
+    "serviceWorkerSettings:\s*\{[\s\S]*?\}\s*",
+    "serviceWorkerSettings: null"
+  )
+  Set-Content -LiteralPath $bootstrapPath -Value $content -Encoding UTF8
+}
+
 Write-Host "==> Building user web app"
 Invoke-InPath (Join-Path $root "apps\user_app") {
   flutter build web --dart-define "ECG_API_BASE_URL=$ApiBaseUrl"
 }
+Disable-FlutterServiceWorker (Join-Path $root "apps\user_app\build\web")
 
 Write-Host ""
 Write-Host "==> Building admin web app"
 Invoke-InPath (Join-Path $root "apps\admin_app") {
   flutter build web --base-href /admin/ --dart-define "ECG_API_BASE_URL=$ApiBaseUrl"
 }
+Disable-FlutterServiceWorker (Join-Path $root "apps\admin_app\build\web")
 
 Write-Host ""
 Write-Host "==> Syncing web builds to infra/nginx/html"

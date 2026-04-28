@@ -1051,18 +1051,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                   DataCell(Text('${item.sortOrder}')),
                   DataCell(Text(item.isVisible ? '是' : '否')),
                   DataCell(
-                    _InlineTableActions(
-                      children: [
-                        _TableActionButton(
-                          label: '编辑',
-                          onPressed: () => _editCategory(item),
-                        ),
-                        _TableActionButton(
-                          label: '删除',
-                          onPressed: () => _deleteCategory(item),
-                          isDanger: true,
-                        ),
-                      ],
+                    _TaxonomyActionMenu(
+                      onEdit: () => _editCategory(item),
+                      onDelete: () => _deleteCategory(item),
                     ),
                   ),
                 ],
@@ -1108,18 +1099,9 @@ class _TaxonomyPageState extends State<_TaxonomyPage> {
                     ),
                   ),
                   DataCell(
-                    _InlineTableActions(
-                      children: [
-                        _TableActionButton(
-                          label: '编辑',
-                          onPressed: () => _editTag(item),
-                        ),
-                        _TableActionButton(
-                          label: '删除',
-                          onPressed: () => _deleteTag(item),
-                          isDanger: true,
-                        ),
-                      ],
+                    _TaxonomyActionMenu(
+                      onEdit: () => _editTag(item),
+                      onDelete: () => _deleteTag(item),
                     ),
                   ),
                 ],
@@ -3513,23 +3495,38 @@ class _TableActions extends StatelessWidget {
   }
 }
 
-class _InlineTableActions extends StatelessWidget {
-  const _InlineTableActions({required this.children});
+class _TaxonomyActionMenu extends StatelessWidget {
+  const _TaxonomyActionMenu({required this.onEdit, required this.onDelete});
 
-  final List<Widget> children;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 136,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var index = 0; index < children.length; index++) ...[
-            if (index > 0) const SizedBox(width: 8),
-            Flexible(child: children[index]),
-          ],
+      width: 96,
+      child: PopupMenuButton<String>(
+        tooltip: '打开操作菜单',
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'edit', child: Text('编辑')),
+          PopupMenuItem(value: 'delete', child: Text('删除')),
         ],
+        onSelected: (value) {
+          if (value == 'edit') {
+            onEdit();
+            return;
+          }
+          if (value == 'delete') {
+            onDelete();
+          }
+        },
+        child: Text(
+          '操作',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: AppColors.brand,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
