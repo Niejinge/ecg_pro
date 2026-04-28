@@ -56,11 +56,28 @@ class _AdminAppState extends State<AdminApp> {
     }
 
     final restored = await widget.sessionStore.read();
+    var session = restored;
+    if (restored != null) {
+      try {
+        final user = await widget.repository.fetchCurrentUser(restored);
+        session = AdminSession(
+          accessToken: restored.accessToken,
+          user: user,
+          expiresIn: restored.expiresIn,
+        );
+        await widget.sessionStore.write(session);
+      } on EcgApiException catch (error) {
+        if (error.statusCode == 401) {
+          await widget.sessionStore.clear();
+          session = null;
+        }
+      }
+    }
     if (!mounted) {
       return;
     }
     setState(() {
-      _session = restored;
+      _session = session;
       _restoringSession = false;
     });
   }

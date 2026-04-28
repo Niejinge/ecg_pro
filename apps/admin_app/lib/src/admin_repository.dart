@@ -95,6 +95,8 @@ abstract class AdminRepository {
     required String password,
   });
 
+  Future<AuthUser> fetchCurrentUser(AdminSession session);
+
   Future<DashboardSummary> fetchDashboardSummary(AdminSession session);
 
   Future<List<CategoryItem>> fetchCategories(AdminSession session);
@@ -219,6 +221,11 @@ class ApiAdminRepository implements AdminRepository {
       user: response.user,
       expiresIn: response.expiresIn,
     );
+  }
+
+  @override
+  Future<AuthUser> fetchCurrentUser(AdminSession session) {
+    return _apiClient.fetchCurrentUser(session.accessToken);
   }
 
   @override

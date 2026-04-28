@@ -80,6 +80,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('admin app validates restored session before dashboard loads', (
+    tester,
+  ) async {
+    final sessionStore = _MemorySessionStore(
+      initialSession: const AdminSession(
+        accessToken: 'expired-token',
+        expiresIn: 7200,
+        user: AuthUser(
+          id: 'user-1',
+          username: 'admin',
+          displayName: 'Admin User',
+          isActive: true,
+          isSuperuser: true,
+          roleCodes: ['admin'],
+        ),
+      ),
+    );
+    final repository = _ExpiredRestoreRepository();
+
+    await tester.pumpWidget(
+      AdminApp(repository: repository, sessionStore: sessionStore),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('管理员登录'), findsOneWidget);
+    expect(await sessionStore.read(), isNull);
+    expect(repository.dashboardCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('case management keeps table actions readable', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -124,6 +154,24 @@ class _UnauthorizedDashboardRepository extends _FakeAdminRepository {
   }
 }
 
+class _ExpiredRestoreRepository extends _FakeAdminRepository {
+  int dashboardCalls = 0;
+
+  @override
+  Future<AuthUser> fetchCurrentUser(AdminSession session) async {
+    throw const EcgApiException(
+      message: 'Invalid or expired token.',
+      statusCode: 401,
+    );
+  }
+
+  @override
+  Future<DashboardSummary> fetchDashboardSummary(AdminSession session) async {
+    dashboardCalls += 1;
+    return super.fetchDashboardSummary(session);
+  }
+}
+
 class _MemorySessionStore implements AdminSessionStore {
   _MemorySessionStore({AdminSession? initialSession})
     : _session = initialSession;
@@ -164,6 +212,11 @@ class _FakeAdminRepository implements AdminRepository {
         roleCodes: ['admin'],
       ),
     );
+  }
+
+  @override
+  Future<AuthUser> fetchCurrentUser(AdminSession session) async {
+    return session.user;
   }
 
   @override
