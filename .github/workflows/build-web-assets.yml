@@ -1,0 +1,51 @@
+name: Build web assets
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "infra/scripts/linux-build-web.sh"
+      - ".github/workflows/build-web-assets.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-web-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.6"
+          channel: stable
+          cache: true
+
+      - name: Build Flutter web apps
+        env:
+          ECG_API_BASE_URL: http://47.105.68.251
+        run: sh infra/scripts/linux-build-web.sh
+
+      - name: Package static assets
+        run: |
+          tar -czf /tmp/ecg-pro-web-assets.tar.gz -C infra/nginx/html user admin
+          printf '%s\n' "${GITHUB_SHA}" > /tmp/source-revision.txt
+
+      - name: Publish assets branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan web-assets
+          git rm -rf .
+          cp /tmp/ecg-pro-web-assets.tar.gz web-assets.tar.gz
+          cp /tmp/source-revision.txt source-revision.txt
+          git add web-assets.tar.gz source-revision.txt
+          git commit -m "build: publish web assets for ${GITHUB_SHA}"
+          git push -f origin web-assets
