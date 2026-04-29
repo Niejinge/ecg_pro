@@ -36,6 +36,7 @@ tmp/
 services/api/storage/
 infra/docker/postgres_data/
 infra/docker/minio_data/
+infra/docker/data/
 infra/nginx/html/admin/**
 infra/nginx/html/user/**
 !infra/nginx/html/admin/.gitkeep
