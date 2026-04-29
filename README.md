@@ -6,7 +6,7 @@ ECG Pro 是一个面向心电图学习场景的多端平台，一期包含：
 - Flutter 管理端：`Web`
 - FastAPI 后端
 - PostgreSQL 数据库
-- MinIO / 本地文件存储
+- Linux 本地文件存储
 - Docker Compose 开发与演示环境
 
 当前仓库已进入一期联调与演示环境收尾阶段，详细文档见：
@@ -17,6 +17,7 @@ ECG Pro 是一个面向心电图学习场景的多端平台，一期包含：
 - [设计系统](D:/projects/ecg_pro/docs/design-system.md)
 - [UI 工具链](D:/projects/ecg_pro/docs/ui-tooling.md)
 - [演示运行手册](D:/projects/ecg_pro/docs/demo-runbook.md)
+- [Linux 部署说明](D:/projects/ecg_pro/docs/linux-deployment.md)
 
 ## 目录结构
 
@@ -149,6 +150,6 @@ flutter run -d chrome
 
 ## 说明
 
-- Docker 统一维护后端、数据库、对象存储和 Web 托管。
+- Docker 统一维护后端、数据库、Linux 本地图片存储和 Web 托管。
 - Android 客户端通过 Flutter 构建 `APK/AAB`，不作为容器运行。
 - 当前仓库已具备一期后端基础业务能力，前端页面与接口联调将在后续迭代中逐步补齐。

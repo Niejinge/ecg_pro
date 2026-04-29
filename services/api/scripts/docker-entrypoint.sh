@@ -31,4 +31,8 @@ echo "Bootstrapping default admin..."
 python scripts/bootstrap_admin.py
 
 echo "Starting API server..."
-exec uvicorn app.main:app --host "${APP_HOST:-0.0.0.0}" --port "${APP_PORT:-8000}" --reload
+if [ "${APP_RELOAD:-false}" = "true" ]; then
+  exec uvicorn app.main:app --host "${APP_HOST:-0.0.0.0}" --port "${APP_PORT:-8000}" --reload
+fi
+
+exec uvicorn app.main:app --host "${APP_HOST:-0.0.0.0}" --port "${APP_PORT:-8000}"

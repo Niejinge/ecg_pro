@@ -10,4 +10,7 @@
 **/.venv
 infra/docker/postgres_data
 infra/docker/minio_data
-
+infra/docker/data
+services/api/storage
+infra/nginx/html/admin
+infra/nginx/html/user

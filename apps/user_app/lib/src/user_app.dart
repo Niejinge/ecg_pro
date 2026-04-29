@@ -152,7 +152,7 @@ class _UserHomePageState extends State<UserHomePage> {
   List<WrongQuestionItem> _wrongQuestions = const [];
   String? _selectedCategoryId;
   int _currentPage = 1;
-  bool _featuredOnly = true;
+  bool _featuredOnly = false;
   String? _errorMessage;
   bool _loading = true;
 
@@ -187,7 +187,7 @@ class _UserHomePageState extends State<UserHomePage> {
       final cases = await widget.repository.fetchCases(
         keyword: _searchController.text.trim(),
         categoryId: _selectedCategoryId,
-        isFeatured: _featuredOnly,
+        isFeatured: _featuredOnly ? true : null,
         page: _currentPage,
       );
       final progress = <LearningProgressItem>[];
@@ -277,6 +277,40 @@ class _UserHomePageState extends State<UserHomePage> {
     await _loadInitialData();
   }
 
+  Future<void> _openFirstAvailableCase({
+    bool startQuizImmediately = false,
+  }) async {
+    final cases = _caseResponse?.items ?? const <PublicCaseListItem>[];
+    final firstCase = cases.isEmpty ? null : cases.first;
+    if (firstCase == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前没有可进入的公开案例。')));
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CaseDetailPage(
+          repository: widget.repository,
+          session: widget.session,
+          caseId: firstCase.id,
+          startQuizImmediately: startQuizImmediately,
+        ),
+      ),
+    );
+    await _loadInitialData();
+  }
+
+  Future<void> _selectCategory(CategoryItem category) async {
+    setState(() {
+      _selectedCategoryId = category.id;
+      _featuredOnly = false;
+      _currentPage = 1;
+    });
+    await _loadInitialData();
+  }
+
   Future<void> _goToPage(int page) async {
     if (page < 1 || page == _currentPage) {
       return;
@@ -311,13 +345,28 @@ class _UserHomePageState extends State<UserHomePage> {
             label: Text(session.user.displayName),
           ),
           const SizedBox(width: AppSpacing.sm),
-          TextButton(onPressed: widget.onLogout, child: const Text('退出')),
+          OutlinedButton.icon(
+            onPressed: widget.onLogout,
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('退出登录'),
+          ),
         ],
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _LearningHero(session: session),
+          _LearningHero(session: session, caseResponse: _caseResponse),
+          const SizedBox(height: AppSpacing.xl),
+          _HomeQuickStartSection(
+            categories: _categories,
+            hasCases: (_caseResponse?.items ?? const []).isNotEmpty,
+            selectedCategoryId: _selectedCategoryId,
+            onStartStudy: _loading ? null : () => _openFirstAvailableCase(),
+            onStartQuiz: _loading
+                ? null
+                : () => _openFirstAvailableCase(startQuizImmediately: true),
+            onSelectCategory: _loading ? null : _selectCategory,
+          ),
           const SizedBox(height: AppSpacing.xl),
           _LearningOverviewSection(
             session: session,
@@ -376,7 +425,7 @@ class _UserHomePageState extends State<UserHomePage> {
                     width: wideLayout ? 200 : double.infinity,
                     child: SwitchListTile(
                       value: _featuredOnly,
-                      title: const Text('精选优先'),
+                      title: const Text('仅看精选'),
                       contentPadding: EdgeInsets.zero,
                       onChanged: (value) {
                         setState(() {
@@ -416,9 +465,9 @@ class _UserHomePageState extends State<UserHomePage> {
           ),
           const SizedBox(height: AppSpacing.xl),
           EcgSectionCard(
-            title: '示例学习案例',
+            title: '公开案例库',
             subtitle: _caseResponse == null
-                ? '优先展示精选案例，帮助你从高频场景开始练习。'
+                ? '默认展示全部公开案例，打开精选筛选后只看推荐案例。'
                 : '共 ${_caseResponse!.total} 个公开案例，第 ${_caseResponse!.page} 页当前 ${_caseResponse!.items.length} 个。',
             child: _buildCaseSection(),
           ),
@@ -523,11 +572,13 @@ class CaseDetailPage extends StatefulWidget {
     required this.repository,
     required this.session,
     required this.caseId,
+    this.startQuizImmediately = false,
   });
 
   final UserRepository repository;
   final UserSession? session;
   final String caseId;
+  final bool startQuizImmediately;
 
   @override
   State<CaseDetailPage> createState() => _CaseDetailPageState();
@@ -539,6 +590,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
   bool _isFavorite = false;
   bool _loading = true;
   bool _favoriteLoading = false;
+  bool _autoStartedQuiz = false;
   String? _errorMessage;
 
   @override
@@ -595,8 +647,23 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         setState(() {
           _loading = false;
         });
+        _maybeAutoStartQuiz();
       }
     }
+  }
+
+  void _maybeAutoStartQuiz() {
+    if (_autoStartedQuiz ||
+        !widget.startQuizImmediately ||
+        _errorMessage != null) {
+      return;
+    }
+    _autoStartedQuiz = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _startQuiz();
+      }
+    });
   }
 
   Future<void> _toggleFavorite() async {
@@ -643,6 +710,12 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
   Future<void> _startQuiz() async {
     final detail = _detail;
     if (detail == null) {
+      return;
+    }
+    if (_quizQuestions.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('该案例暂时没有可用测验。')));
       return;
     }
     if (widget.session == null) {
@@ -1162,13 +1235,15 @@ class _UserLoginDialogState extends State<_UserLoginDialog> {
 }
 
 class _LearningHero extends StatelessWidget {
-  const _LearningHero({required this.session});
+  const _LearningHero({required this.session, required this.caseResponse});
 
   final UserSession? session;
+  final PublicCaseListResponse? caseResponse;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final totalCases = caseResponse?.total;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -1181,60 +1256,284 @@ class _LearningHero extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: AppColors.border),
       ),
-      child: Wrap(
-        spacing: AppSpacing.xl,
-        runSpacing: AppSpacing.xl,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.sm,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wideLayout = constraints.maxWidth >= 840;
+          final intro = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Text(session == null ? '游客模式可浏览' : '已登录学习模式'),
                   ),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Text(session == null ? '游客模式可浏览' : '已登录学习模式'),
+                  if (totalCases != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE9F7F2),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFBFE6D5)),
+                      ),
+                      child: Text('当前 $totalCases 个公开案例'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                '用结构化案例建立心电图判断路径',
+                style: textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  '用结构化案例建立你的心电图判断路径',
-                  style: textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                '从案例图像开始，逐步完成节律识别、诊断判断、风险评估和处理建议。首页现在默认展示全部公开案例，适合快速抽取案例进入练习。',
+                style: textTheme.bodyLarge?.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  '每个案例都整理了图像、诊断、关键导联、临床意义、风险等级、处理建议和记忆提示，登录后还能同步学习进度、收藏和测验成绩。',
-                  style: textTheme.bodyLarge?.copyWith(
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 300,
+              ),
+            ],
+          );
+          final stats = SizedBox(
+            width: wideLayout ? 320 : double.infinity,
             child: Column(
               children: const [
                 _StatTile(title: '学习路径', value: '看图 -> 判读 -> 测验'),
-                SizedBox(height: AppSpacing.lg),
+                SizedBox(height: AppSpacing.md),
                 _StatTile(title: '案例结构', value: '图像 + 诊断 + 临床建议'),
-                SizedBox(height: AppSpacing.lg),
-                _StatTile(title: '终端支持', value: 'Web 与 Android 同步体验'),
               ],
             ),
+          );
+
+          if (!wideLayout) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                intro,
+                const SizedBox(height: AppSpacing.xl),
+                stats,
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: intro),
+              const SizedBox(width: AppSpacing.xl),
+              stats,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HomeQuickStartSection extends StatelessWidget {
+  const _HomeQuickStartSection({
+    required this.categories,
+    required this.hasCases,
+    required this.selectedCategoryId,
+    required this.onStartStudy,
+    required this.onStartQuiz,
+    required this.onSelectCategory,
+  });
+
+  final List<CategoryItem> categories;
+  final bool hasCases;
+  final String? selectedCategoryId;
+  final VoidCallback? onStartStudy;
+  final VoidCallback? onStartQuiz;
+  final ValueChanged<CategoryItem>? onSelectCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    return EcgSectionCard(
+      title: '快速开始',
+      subtitle: '从这里直接进入学习、测验，或按分类收敛案例库。',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wideLayout = constraints.maxWidth >= 780;
+              final cards = [
+                _QuickStartCard(
+                  icon: Icons.play_circle_rounded,
+                  title: '学习模式',
+                  description: '进入当前列表第一条案例，按图像、诊断和要点完成学习。',
+                  buttonLabel: '开始学习',
+                  onPressed: hasCases ? onStartStudy : null,
+                ),
+                _QuickStartCard(
+                  icon: Icons.quiz_rounded,
+                  title: '测验模式',
+                  description: '直接打开当前案例测验，适合快速自测和错题沉淀。',
+                  buttonLabel: '进入测验',
+                  onPressed: hasCases ? onStartQuiz : null,
+                ),
+                _QuickStartCard(
+                  icon: Icons.category_rounded,
+                  title: '分类学习',
+                  description: '先选择一个主题分类，再围绕同类心电图连续练习。',
+                  buttonLabel: categories.isEmpty ? '暂无分类' : '选择分类',
+                  onPressed: null,
+                ),
+              ];
+
+              if (!wideLayout) {
+                return Column(
+                  children: [
+                    for (final card in cards) ...[
+                      card,
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final card in cards) ...[
+                    Expanded(child: card),
+                    if (card != cards.last)
+                      const SizedBox(width: AppSpacing.lg),
+                  ],
+                ],
+              );
+            },
           ),
+          if (categories.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: categories
+                  .take(8)
+                  .map(
+                    (category) => _CategoryQuickChip(
+                      category: category,
+                      selected: category.id == selectedCategoryId,
+                      onSelected: onSelectCategory == null
+                          ? null
+                          : () => onSelectCategory!(category),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _QuickStartCard extends StatelessWidget {
+  const _QuickStartCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 188),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.brand.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: AppColors.brand),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            description,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          FilledButton.tonal(onPressed: onPressed, child: Text(buttonLabel)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryQuickChip extends StatelessWidget {
+  const _CategoryQuickChip({
+    required this.category,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final CategoryItem category;
+  final bool selected;
+  final VoidCallback? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      selected: selected,
+      onSelected: onSelected == null ? null : (_) => onSelected!(),
+      label: Text(category.name),
+      avatar: Icon(
+        Icons.folder_open_rounded,
+        size: 18,
+        color: selected ? Colors.white : AppColors.brand,
+      ),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppColors.textPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+      selectedColor: AppColors.brand,
+      backgroundColor: AppColors.surface,
+      side: BorderSide(color: selected ? AppColors.brand : AppColors.border),
     );
   }
 }

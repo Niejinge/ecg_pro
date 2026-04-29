@@ -4,22 +4,22 @@ import 'package:user_app/main.dart';
 
 void main() {
   testWidgets('guest user can load public case list', (tester) async {
+    final repository = _FakeUserRepository();
+
     await tester.pumpWidget(
-      UserApp(
-        repository: _FakeUserRepository(),
-        sessionStore: _MemoryUserSessionStore(),
-      ),
+      UserApp(repository: repository, sessionStore: _MemoryUserSessionStore()),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('游客模式可浏览'), findsOneWidget);
+    expect(find.text('快速开始'), findsOneWidget);
+    expect(find.text('公开案例库'), findsOneWidget);
+    expect(repository.fetchCaseFeaturedFilters.single, isNull);
     expect(find.text('学习内容加载失败，请检查接口服务是否可用。'), findsNothing);
     expect(find.text('进入案例'), findsOneWidget);
   });
 
-  testWidgets('user can browse case list and detail page', (
-    tester,
-  ) async {
+  testWidgets('user can browse case list and detail page', (tester) async {
     await tester.pumpWidget(
       UserApp(
         repository: _FakeUserRepository(),
@@ -41,8 +41,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ECG Pro 学习端'), findsOneWidget);
-    expect(find.text('示例学习案例'), findsOneWidget);
+    expect(find.text('公开案例库'), findsOneWidget);
     expect(find.text('已登录学习模式'), findsOneWidget);
+    expect(find.text('退出登录'), findsOneWidget);
     expect(find.text('进入案例'), findsOneWidget);
 
     await tester.ensureVisible(find.text('进入案例'));
@@ -118,6 +119,38 @@ void main() {
     expect(find.text('上一页'), findsOneWidget);
   });
 
+  testWidgets('signed in user can start quiz from home shortcut', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(),
+        sessionStore: _MemoryUserSessionStore(),
+        initialSession: const UserSession(
+          accessToken: 'demo-token',
+          expiresIn: 7200,
+          user: AuthUser(
+            id: 'user-1',
+            username: 'learner',
+            displayName: '学习用户',
+            isActive: true,
+            isSuperuser: false,
+            roleCodes: ['learner'],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final startQuiz = find.text('进入测验');
+    await tester.ensureVisible(startQuiz);
+    await tester.tap(startQuiz);
+    await tester.pumpAndSettle();
+
+    expect(find.text('案例测验'), findsOneWidget);
+    expect(find.text('共 1 题，提交后将记录本次成绩与错题。'), findsOneWidget);
+  });
+
   testWidgets('signed in user can submit quiz and open result page', (
     tester,
   ) async {
@@ -180,6 +213,8 @@ class _MemoryUserSessionStore implements UserSessionStore {
 }
 
 class _FakeUserRepository implements UserRepository {
+  final List<bool?> fetchCaseFeaturedFilters = [];
+
   @override
   Future<FavoriteItem> addFavorite(UserSession session, String caseId) async {
     return const FavoriteItem(
@@ -261,6 +296,8 @@ class _FakeUserRepository implements UserRepository {
     int page = 1,
     int pageSize = 20,
   }) async {
+    fetchCaseFeaturedFilters.add(isFeatured);
+
     if (page == 2) {
       return const PublicCaseListResponse(
         items: [
