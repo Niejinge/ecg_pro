@@ -6,6 +6,7 @@ BRANCH=${ECG_PRO_BRANCH:-main}
 ENV_FILE=${ENV_FILE:-"$ROOT_DIR/.env"}
 COMPOSE_FILE=${COMPOSE_FILE:-"$ROOT_DIR/infra/docker/docker-compose.static.yml"}
 LOCK_DIR=${LOCK_DIR:-/tmp/ecg-pro-auto-deploy.lock}
+BUILD_FRONTEND=${ECG_BUILD_FRONTEND:-auto}
 
 log() {
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -39,12 +40,18 @@ log "deploying $local_revision -> $remote_revision"
 
 git pull --ff-only origin "$BRANCH"
 
+frontend_changed=false
 if printf '%s\n' "$changed_files" | grep -Eq '^(apps/|packages/)'; then
-  log "frontend source changed; static web assets must be rebuilt and synced separately for UI changes to appear"
+  frontend_changed=true
 fi
 
 mkdir -p "$ROOT_DIR/infra/docker/data/postgres"
 mkdir -p "$ROOT_DIR/infra/docker/data/storage"
+
+if [ "$BUILD_FRONTEND" = "always" ] || { [ "$BUILD_FRONTEND" = "auto" ] && [ "$frontend_changed" = "true" ]; } || [ ! -f "$ROOT_DIR/infra/nginx/html/user/index.html" ] || [ ! -f "$ROOT_DIR/infra/nginx/html/admin/index.html" ]; then
+  log "building Flutter web assets"
+  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/infra/scripts/linux-build-web.sh"
+fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps

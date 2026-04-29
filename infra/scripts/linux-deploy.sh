@@ -15,5 +15,9 @@ fi
 mkdir -p "$ROOT_DIR/infra/docker/data/postgres"
 mkdir -p "$ROOT_DIR/infra/docker/data/storage"
 
+if [ "${ECG_BUILD_FRONTEND:-0}" = "1" ]; then
+  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/infra/scripts/linux-build-web.sh"
+fi
+
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
