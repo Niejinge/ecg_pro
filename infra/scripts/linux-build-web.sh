@@ -11,6 +11,9 @@ else
   FLUTTER_BIN=${FLUTTER_BIN:-flutter}
 fi
 
+export PUB_HOSTED_URL=${PUB_HOSTED_URL:-https://pub.flutter-io.cn}
+export FLUTTER_STORAGE_BASE_URL=${FLUTTER_STORAGE_BASE_URL:-https://storage.flutter-io.cn}
+
 if ! command -v "$FLUTTER_BIN" >/dev/null 2>&1; then
   echo "Flutter is not installed. Install it to /opt/flutter or set FLUTTER_BIN." >&2
   exit 1
