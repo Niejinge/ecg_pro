@@ -31,6 +31,15 @@ local_revision=$(git rev-parse HEAD)
 remote_revision=$(git rev-parse "origin/$BRANCH")
 
 if [ "$local_revision" = "$remote_revision" ]; then
+  mkdir -p "$ROOT_DIR/infra/docker/data/postgres"
+  mkdir -p "$ROOT_DIR/infra/docker/data/storage"
+  if [ "$BUILD_FRONTEND" = "always" ] || [ ! -f "$ROOT_DIR/infra/nginx/html/user/index.html" ] || [ ! -f "$ROOT_DIR/infra/nginx/html/admin/index.html" ]; then
+    log "building Flutter web assets"
+    ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/infra/scripts/linux-build-web.sh"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+    log "deployment complete"
+  fi
   log "no changes on origin/$BRANCH"
   exit 0
 fi
