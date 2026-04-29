@@ -66,7 +66,7 @@ echo "==> Building user web app with API: $ECG_API_BASE_URL"
 (
   cd "$ROOT_DIR/apps/user_app"
   "$FLUTTER_BIN" pub get
-  "$FLUTTER_BIN" build web --release --dart-define "ECG_API_BASE_URL=$ECG_API_BASE_URL"
+  "$FLUTTER_BIN" build web --release --no-wasm-dry-run --dart-define "ECG_API_BASE_URL=$ECG_API_BASE_URL"
 )
 disable_flutter_service_worker "$ROOT_DIR/apps/user_app/build/web"
 
@@ -74,7 +74,7 @@ echo "==> Building admin web app with API: $ECG_API_BASE_URL"
 (
   cd "$ROOT_DIR/apps/admin_app"
   "$FLUTTER_BIN" pub get
-  "$FLUTTER_BIN" build web --release --base-href /admin/ --dart-define "ECG_API_BASE_URL=$ECG_API_BASE_URL"
+  "$FLUTTER_BIN" build web --release --no-wasm-dry-run --base-href /admin/ --dart-define "ECG_API_BASE_URL=$ECG_API_BASE_URL"
 )
 disable_flutter_service_worker "$ROOT_DIR/apps/admin_app/build/web"
 
