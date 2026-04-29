@@ -12,8 +12,8 @@ import requests
 
 
 DEFAULT_API_BASE_URL = "http://localhost:8080"
-DEFAULT_USERNAME = "admin"
-DEFAULT_PASSWORD = "Admin123456"
+DEFAULT_USERNAME = "niegehedao"
+DEFAULT_PASSWORD = "niegehedao123"
 
 
 def safe_slug(value: str, fallback: str = "item") -> str:

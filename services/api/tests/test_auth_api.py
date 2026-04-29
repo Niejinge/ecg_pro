@@ -9,7 +9,7 @@ def test_admin_can_login_and_fetch_profile(
 
     assert me_response.status_code == 200
     payload = me_response.json()
-    assert payload["username"] == "admin"
+    assert payload["username"] == "niegehedao"
     assert payload["is_superuser"] is True
     assert "admin" in payload["role_codes"]
 

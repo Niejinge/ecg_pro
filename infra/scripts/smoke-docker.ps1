@@ -1,8 +1,8 @@
 param(
   [string]$BaseUrl = "http://localhost:8080",
   [string]$ApiUrl = "http://localhost:8000",
-  [string]$AdminUsername = "admin",
-  [string]$AdminPassword = "Admin123456",
+  [string]$AdminUsername = "niegehedao",
+  [string]$AdminPassword = "niegehedao123",
   [switch]$SeedDemoData
 )
 

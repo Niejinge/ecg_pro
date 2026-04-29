@@ -29,6 +29,7 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Local runtime data
 tmp/

@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     local_storage_path: str = "/app/storage"
     public_base_url: str = "http://localhost:8080"
     minio_bucket: str = "ecg-assets"
-    bootstrap_admin_username: str = "admin"
-    bootstrap_admin_password: str = "Admin123456"
+    bootstrap_admin_username: str = "niegehedao"
+    bootstrap_admin_password: str = "niegehedao123"
     bootstrap_admin_display_name: str = "ECG Pro Admin"
 
     model_config = SettingsConfigDict(

@@ -82,7 +82,7 @@ def _login(test_client: TestClient, username: str, password: str) -> str:
 
 @pytest.fixture()
 def admin_headers(client: TestClient) -> dict[str, str]:
-    token = _login(client, "admin", "Admin123456")
+    token = _login(client, "niegehedao", "niegehedao123")
     return {"Authorization": f"Bearer {token}"}
 
 
