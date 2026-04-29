@@ -151,6 +151,32 @@ void main() {
     expect(find.text('共 1 题，提交后将记录本次成绩与错题。'), findsOneWidget);
   });
 
+  testWidgets('home category shortcuts support long names', (tester) async {
+    const longCategoryName = '临床心电图全解：案例分析与学习精要（原书第二版）';
+
+    await tester.pumpWidget(
+      UserApp(
+        repository: _FakeUserRepository(
+          categories: [
+            CategoryItem(
+              id: 'category-long-book',
+              name: longCategoryName,
+              slug: 'long-book',
+              description: '长书名分类',
+              sortOrder: 1,
+              isVisible: true,
+              parentId: null,
+            ),
+          ],
+        ),
+        sessionStore: _MemoryUserSessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(longCategoryName), findsOneWidget);
+  });
+
   testWidgets('signed in user can submit quiz and open result page', (
     tester,
   ) async {
@@ -213,6 +239,22 @@ class _MemoryUserSessionStore implements UserSessionStore {
 }
 
 class _FakeUserRepository implements UserRepository {
+  _FakeUserRepository({List<CategoryItem>? categories})
+    : _categories = categories ?? _defaultCategories;
+
+  static const _defaultCategories = [
+    CategoryItem(
+      id: 'category-arrhythmia',
+      name: '心律失常',
+      slug: 'arrhythmia',
+      description: '节律相关案例',
+      sortOrder: 1,
+      isVisible: true,
+      parentId: null,
+    ),
+  ];
+
+  final List<CategoryItem> _categories;
   final List<bool?> fetchCaseFeaturedFilters = [];
 
   @override
@@ -273,17 +315,7 @@ class _FakeUserRepository implements UserRepository {
 
   @override
   Future<List<CategoryItem>> fetchCategories() async {
-    return const [
-      CategoryItem(
-        id: 'category-arrhythmia',
-        name: '心律失常',
-        slug: 'arrhythmia',
-        description: '节律相关案例',
-        sortOrder: 1,
-        isVisible: true,
-        parentId: null,
-      ),
-    ];
+    return _categories;
   }
 
   @override

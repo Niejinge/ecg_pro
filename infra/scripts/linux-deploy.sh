@@ -3,7 +3,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 ENV_FILE=${ENV_FILE:-"$ROOT_DIR/.env"}
-COMPOSE_FILE="$ROOT_DIR/infra/docker/docker-compose.prod.yml"
+COMPOSE_FILE=${COMPOSE_FILE:-"$ROOT_DIR/infra/docker/docker-compose.prod.yml"}
 
 if [ ! -f "$ENV_FILE" ]; then
   cp "$ROOT_DIR/.env.production.example" "$ENV_FILE"

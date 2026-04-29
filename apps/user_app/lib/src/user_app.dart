@@ -1518,22 +1518,64 @@ class _CategoryQuickChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      selected: selected,
-      onSelected: onSelected == null ? null : (_) => onSelected!(),
-      label: Text(category.name),
-      avatar: Icon(
-        Icons.folder_open_rounded,
-        size: 18,
-        color: selected ? Colors.white : AppColors.brand,
+    final foreground = selected ? Colors.white : AppColors.textPrimary;
+    final borderColor = selected ? AppColors.brand : AppColors.border;
+    final background = selected ? AppColors.brand : AppColors.surface;
+
+    return Tooltip(
+      message: category.name,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: 40,
+          minWidth: 144,
+          maxWidth: 360,
+        ),
+        child: Material(
+          color: background,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+            side: BorderSide(color: borderColor),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onSelected,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: 9,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(
+                      Icons.folder_open_rounded,
+                      size: 18,
+                      color: selected ? Colors.white : AppColors.brand,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      category.name,
+                      softWrap: true,
+                      maxLines: 2,
+                      overflow: TextOverflow.visible,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: foreground,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : AppColors.textPrimary,
-        fontWeight: FontWeight.w600,
-      ),
-      selectedColor: AppColors.brand,
-      backgroundColor: AppColors.surface,
-      side: BorderSide(color: selected ? AppColors.brand : AppColors.border),
     );
   }
 }
